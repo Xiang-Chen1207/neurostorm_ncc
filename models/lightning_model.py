@@ -13,7 +13,7 @@ import torchmetrics
 import torchmetrics.classification
 from torchmetrics.classification import BinaryAccuracy, BinaryAUROC, MulticlassAccuracy, MulticlassAUROC
 from torchmetrics import  PearsonCorrCoef # Accuracy,
-from sklearn.metrics import accuracy_score, balanced_accuracy_score, roc_curve
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, roc_curve, f1_score
 import monai.transforms as monai_t
 
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
@@ -363,6 +363,26 @@ class LightningModel(pl.LightningModule):
                     df.to_csv(csv_filename, index=False)
                     print(f"[INFO] Predictions saved to: {csv_filename}\n")
 
+                    # Calculate and save metrics (ACC and F1-weight)
+                    pred_labels = predictions.cpu().numpy()
+                    true_labels = subj_targets.cpu().numpy()
+                    acc_score = accuracy_score(true_labels, pred_labels)
+                    f1_weighted = f1_score(true_labels, pred_labels, average='weighted')
+
+                    # Save metrics to a separate CSV file
+                    metrics_data = {
+                        'mode': [mode],
+                        'epoch': [self.current_epoch],
+                        'accuracy': [acc_score],
+                        'f1_weighted': [f1_weighted],
+                        'num_samples': [len(subjects)]
+                    }
+                    metrics_df = pd.DataFrame(metrics_data)
+                    metrics_filename = os.path.join(predictions_dir, f'metrics_{mode}_epoch{self.current_epoch}.csv')
+                    metrics_df.to_csv(metrics_filename, index=False)
+                    print(f"[INFO] Metrics - ACC: {acc_score:.4f}, F1-weighted: {f1_weighted:.4f}")
+                    print(f"[INFO] Metrics saved to: {metrics_filename}\n")
+
             elif self.hparams.num_classes > 2:
                 auroc_func = MulticlassAUROC(num_classes=self.hparams.num_classes).to(total_out_logits.device)
                 predictions = subj_avg_logits.max(dim=1)[1]
@@ -419,6 +439,26 @@ class LightningModel(pl.LightningModule):
                     csv_filename = os.path.join(predictions_dir, f'predictions_{mode}_epoch{self.current_epoch}.csv')
                     df.to_csv(csv_filename, index=False)
                     print(f"[INFO] Predictions saved to: {csv_filename}\n")
+
+                    # Calculate and save metrics (ACC and F1-weight)
+                    pred_labels = predictions.cpu().numpy()
+                    true_labels = subj_targets.cpu().numpy()
+                    acc_score = accuracy_score(true_labels, pred_labels)
+                    f1_weighted = f1_score(true_labels, pred_labels, average='weighted')
+
+                    # Save metrics to a separate CSV file
+                    metrics_data = {
+                        'mode': [mode],
+                        'epoch': [self.current_epoch],
+                        'accuracy': [acc_score],
+                        'f1_weighted': [f1_weighted],
+                        'num_samples': [len(subjects)]
+                    }
+                    metrics_df = pd.DataFrame(metrics_data)
+                    metrics_filename = os.path.join(predictions_dir, f'metrics_{mode}_epoch{self.current_epoch}.csv')
+                    metrics_df.to_csv(metrics_filename, index=False)
+                    print(f"[INFO] Metrics - ACC: {acc_score:.4f}, F1-weighted: {f1_weighted:.4f}")
+                    print(f"[INFO] Metrics saved to: {metrics_filename}\n")
 
                 self.log(f"{mode}_acc3", acc3, sync_dist=True)
 
