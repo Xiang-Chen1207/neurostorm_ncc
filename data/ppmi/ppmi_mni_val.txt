@@ -1,0 +1,12 @@
+/mnt/dataset4/DATASETS/fsl_fmri/ppmi/mni/ADNI_sub-120549_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_zscore.nii.gz
+/mnt/dataset4/DATASETS/fsl_fmri/ppmi/mni/ADNI_sub-153254_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_zscore.nii.gz
+/mnt/dataset4/DATASETS/fsl_fmri/ppmi/mni/ADNI_sub-146945_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_zscore.nii.gz
+/mnt/dataset4/DATASETS/fsl_fmri/ppmi/mni/ADNI_sub-149125_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_zscore.nii.gz
+/mnt/dataset4/DATASETS/fsl_fmri/ppmi/mni/ADNI_sub-140871_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_zscore.nii.gz
+/mnt/dataset4/DATASETS/fsl_fmri/ppmi/mni/ADNI_sub-140568_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_zscore.nii.gz
+/mnt/dataset4/DATASETS/fsl_fmri/ppmi/mni/ADNI_sub-101179_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_zscore.nii.gz
+/mnt/dataset4/DATASETS/fsl_fmri/ppmi/mni/ADNI_sub-100898_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_zscore.nii.gz
+/mnt/dataset4/DATASETS/fsl_fmri/ppmi/mni/ADNI_sub-121619_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_zscore.nii.gz
+/mnt/dataset4/DATASETS/fsl_fmri/ppmi/mni/ADNI_sub-165031_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_zscore.nii.gz
+/mnt/dataset4/DATASETS/fsl_fmri/ppmi/mni/ADNI_sub-187759_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_zscore.nii.gz
+/mnt/dataset4/DATASETS/fsl_fmri/ppmi/mni/ADNI_sub-240386_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_zscore.nii.gz

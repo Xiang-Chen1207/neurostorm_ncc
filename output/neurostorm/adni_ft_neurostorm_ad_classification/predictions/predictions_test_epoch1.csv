@@ -1,0 +1,13 @@
+subject,predicted_label,true_label,logit,probability,correct
+ADNI_sub-003S7010_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_cn_zscore.nii.gz,1,0,0.053709447383880615,0.5134241580963135,0
+ADNI_sub-011S6303_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_ad_zscore.nii.gz,1,1,0.08743292838335037,0.5218443274497986,1
+ADNI_sub-027S6733_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_ad_zscore.nii.gz,1,1,0.07096711546182632,0.5177343487739563,1
+ADNI_sub-035S6730_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_cn_zscore.nii.gz,1,0,0.07180198282003403,0.5179427862167358,0
+ADNI_sub-070S6966_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_cn_zscore.nii.gz,1,0,0.10538937151432037,0.5263229608535767,0
+ADNI_sub-098S6658_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_ad_zscore.nii.gz,1,1,0.08730292320251465,0.521811842918396,1
+ADNI_sub-099S6175_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_cn_zscore.nii.gz,1,0,0.1298551857471466,0.5324182510375977,0
+ADNI_sub-114S6039_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_ad_zscore.nii.gz,1,1,0.07451427727937698,0.518619954586029,1
+ADNI_sub-114S6368_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_ad_zscore.nii.gz,1,1,0.05065535381436348,0.5126611590385437,1
+ADNI_sub-135S6284_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_ad_zscore.nii.gz,1,1,0.07696938514709473,0.5192328691482544,1
+ADNI_sub-168S6121_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_cn_zscore.nii.gz,1,0,0.07005594670772552,0.5175068378448486,0
+ADNI_sub-168S6318_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold.nii.gz_cn_zscore.nii.gz,1,0,0.04014451801776886,0.5100347399711609,0
