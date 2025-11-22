@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 import numpy as np
 import pandas as pd
 from torch.utils.data import DataLoader, Subset
-from datasets.fmri_datasets import HCP1200, ABCD, UKB, Cobre, ADHD200, UCLA, HCPEP, HCPTASK, GOD, MOVIE, TransDiag, ADNI, HCP
+from datasets.fmri_datasets import HCP1200, ABCD, UKB, Cobre, ADHD200, UCLA, HCPEP, HCPTASK, GOD, MOVIE, TransDiag, ADNI, HCP, ABIDE
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from .parser import str2bool
 
@@ -78,6 +78,8 @@ class fMRIDataModule(pl.LightningDataModule):
             return ADNI
         elif self.hparams.dataset_name == 'HCP':
             return HCP
+        elif self.hparams.dataset_name == 'ABIDE':
+            return ABIDE
         else:
             raise NotImplementedError
 
@@ -671,6 +673,109 @@ class fMRIDataModule(pl.LightningDataModule):
             print(f"  - Val: {len(split_file_paths['val'])} files")
             print(f"  - Test: {len(split_file_paths['test'])} files")
 
+        elif self.hparams.dataset_name == "ABIDE":
+            """
+            ABIDE dataset loading from txt files containing npz file paths.
+            Expected structure:
+            - abide_train.txt: CSV format with npz_path column
+            - abide_test.txt: CSV format with npz_path column
+            - abide_val.txt: CSV format with npz_path column
+            - abide.csv: CSV file with SUB_ID and AGE_AT_SCAN columns
+
+            Labels (age values) are extracted from abide.csv based on subject ID.
+            """
+            # Load txt files with npz file paths (they have CSV headers)
+            txt_files = {
+                'train': os.path.join(self.hparams.image_path, 'abide_train.txt'),
+                'val': os.path.join(self.hparams.image_path, 'abide_val.txt'),
+                'test': os.path.join(self.hparams.image_path, 'abide_test.txt')
+            }
+
+            # Load CSV file with labels
+            csv_file = os.path.join(self.hparams.image_path, 'abide.csv')
+            if not os.path.exists(csv_file):
+                raise FileNotFoundError(f"ABIDE CSV file not found: {csv_file}")
+
+            meta_data = pd.read_csv(csv_file)
+            # Create a dictionary mapping subject ID to age value
+            subject_label_dict = {}
+            for _, row in meta_data.iterrows():
+                subject_id = str(row['SUB_ID'])
+
+                # Use AGE_AT_SCAN for regression task (continuous age value)
+                age = float(row['AGE_AT_SCAN'])
+
+                subject_label_dict[subject_id] = age
+
+            print(f"Loaded age values for {len(subject_label_dict)} subjects from CSV")
+
+            # Load file paths from each split SEPARATELY
+            split_file_paths = {'train': [], 'val': [], 'test': []}
+            for split_name, txt_file in txt_files.items():
+                if os.path.exists(txt_file):
+                    # Read CSV with pandas (these files have headers)
+                    df = pd.read_csv(txt_file)
+                    if 'npz_path' in df.columns:
+                        paths = df['npz_path'].tolist()
+                        split_file_paths[split_name] = paths
+                        print(f"Loaded {len(split_file_paths[split_name])} paths from {split_name} split")
+                    else:
+                        print(f"Warning: {txt_file} does not have 'npz_path' column")
+                else:
+                    print(f"Warning: {txt_file} not found, skipping...")
+
+            # Extract labels from CSV based on subject ID in file path
+            matched_subjects = 0
+            unmatched_subjects = set()
+            age_values = []
+
+            for file_path in split_file_paths['train'] + split_file_paths['val'] + split_file_paths['test']:
+                # Extract subject ID from file path
+                # Example: ".../CMU_a_0050642_func_preproc/block0000_frames_000000-000039.npz"
+                parent_dir = os.path.basename(os.path.dirname(file_path))
+
+                # Extract subject ID: "CMU_a_0050642_func_preproc" -> "0050642" -> "50642"
+                parts = parent_dir.split('_')
+                subject_id = None
+                for part in parts:
+                    if part.startswith('00') and part[2:].isdigit():
+                        # Remove leading zeros
+                        subject_id = str(int(part))
+                        break
+
+                # Look up age from CSV
+                if subject_id and subject_id in subject_label_dict:
+                    age = subject_label_dict[subject_id]
+                    sex = 0  # Not using sex for this task
+
+                    # Use file path as the key (unique identifier)
+                    final_dict[file_path] = [sex, age]
+                    matched_subjects += 1
+                    age_values.append(age)
+                else:
+                    if subject_id:
+                        unmatched_subjects.add(subject_id)
+
+            # Store the predefined split information
+            self.abide_split_file_paths = split_file_paths
+
+            # Print statistics
+            age_values = np.array(age_values)
+            print(f'\nLoad dataset ABIDE, {len(final_dict)} files from {matched_subjects} matched subjects')
+            print(f"  - Age range: {age_values.min():.2f} - {age_values.max():.2f} years")
+            print(f"  - Age mean ± std: {age_values.mean():.2f} ± {age_values.std():.2f} years")
+
+            if unmatched_subjects:
+                print(f"  - Warning: {len(unmatched_subjects)} subject IDs in npz files not found in CSV")
+                if len(unmatched_subjects) <= 10:
+                    print(f"    Unmatched subjects: {sorted(unmatched_subjects)}")
+
+            # Print split statistics
+            print(f"\nPredefined split from txt files:")
+            print(f"  - Train: {len(split_file_paths['train'])} files")
+            print(f"  - Val: {len(split_file_paths['val'])} files")
+            print(f"  - Test: {len(split_file_paths['test'])} files")
+
         return final_dict
 
     def setup(self, stage=None):
@@ -705,6 +810,12 @@ class fMRIDataModule(pl.LightningDataModule):
             train_names = self.hcp_split_file_paths['train']
             val_names = self.hcp_split_file_paths['val']
             test_names = self.hcp_split_file_paths['test']
+        # For ABIDE dataset, use predefined split from txt files
+        elif self.hparams.dataset_name == "ABIDE" and hasattr(self, 'abide_split_file_paths'):
+            print("\n[INFO] Using predefined ABIDE split from txt files (not random split)")
+            train_names = self.abide_split_file_paths['train']
+            val_names = self.abide_split_file_paths['val']
+            test_names = self.abide_split_file_paths['test']
         elif os.path.exists(self.split_file_path):
             train_names, val_names, test_names = self.load_split()
         else:
