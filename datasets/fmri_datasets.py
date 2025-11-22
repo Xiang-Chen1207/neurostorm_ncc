@@ -695,6 +695,8 @@ class HCP(BaseDataset):
         total_files = len(subject_dict)
         skipped_files = 0
         processed_subjects = set()  # Track which subjects we've already processed
+        error_count = 0
+        file_not_found_count = 0
 
         print(f"Processing {total_files} HCP files - keeping only first file per subject, first 20 frames...")
 
@@ -720,7 +722,9 @@ class HCP(BaseDataset):
 
                 # Check if file exists
                 if not os.path.exists(file_path):
-                    print(f"  Warning: File not found: {file_path}")
+                    if file_not_found_count < 5:  # Only print first 5 missing files
+                        print(f"  Warning: File not found: {file_path}")
+                    file_not_found_count += 1
                     skipped_files += 1
                     continue
 
@@ -742,7 +746,7 @@ class HCP(BaseDataset):
                 elif fmri_data.shape[0] >= self.sequence_length:
                     num_frames = fmri_data.shape[0]
                 else:
-                    print(f"  Skipping {file_path}: insufficient frames")
+                    print(f"  Skipping {file_path}: insufficient frames (shape: {fmri_data.shape})")
                     skipped_files += 1
                     continue
 
@@ -759,12 +763,14 @@ class HCP(BaseDataset):
                     print(f"  Checked {i + 1}/{total_files} files, created {len(data)} samples from {len(processed_subjects)} unique subjects...")
 
             except Exception as e:
-                print(f"Error loading {file_path}: {e}")
+                if error_count < 5:  # Only print first 5 errors
+                    print(f"Error loading {file_path}: {e}")
+                error_count += 1
                 skipped_files += 1
                 continue
 
         print(f"Total: {len(data)} samples created from {len(processed_subjects)} unique subjects")
-        print(f"  (Skipped {skipped_files} files: duplicates or errors)")
+        print(f"  (Skipped {skipped_files} files: {file_not_found_count} not found, {error_count} load errors, {skipped_files - file_not_found_count - error_count} duplicates)")
 
         if self.train:
             self.target_values = np.array([tup[6] for tup in data]).reshape(-1, 1)
