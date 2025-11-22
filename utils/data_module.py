@@ -675,14 +675,19 @@ class fMRIDataModule(pl.LightningDataModule):
 
         elif self.hparams.dataset_name == "ABIDE":
             """
-            ABIDE dataset loading from txt files containing npz file paths.
-            Expected structure:
-            - abide_train.txt: Raw text file, one npz path per line
-            - abide_test.txt: Raw text file, one npz path per line
-            - abide_val.txt: Raw text file, one npz path per line
+            - abide_train.txt: Plain text file, one npz file path per line (no headers)
+
+            - abide_test.txt: Plain text file, one npz file path per line (no headers)
+
+            - abide_val.txt: Plain text file, one npz file path per line (no headers)
+
             - abide.csv: CSV file with SUB_ID and AGE_AT_SCAN columns
+
+ 
+
+            Labels (age values) are extracted from abide.csv based on subject ID.
             """
-            # Load txt files with npz file paths
+            # Load txt files with npz file paths (they have CSV headers)
             txt_files = {
                 'train': os.path.join(self.hparams.image_path, 'abide_train.txt'),
                 'val': os.path.join(self.hparams.image_path, 'abide_val.txt'),
@@ -698,9 +703,8 @@ class fMRIDataModule(pl.LightningDataModule):
             # Create a dictionary mapping subject ID to age value
             subject_label_dict = {}
             for _, row in meta_data.iterrows():
+                subject_id = str(row['SUB_ID'])
 
-                subject_id = str(row['SUB_ID']) 
-                
                 # Use AGE_AT_SCAN for regression task (continuous age value)
                 age = float(row['AGE_AT_SCAN'])
 
@@ -712,16 +716,18 @@ class fMRIDataModule(pl.LightningDataModule):
             split_file_paths = {'train': [], 'val': [], 'test': []}
             for split_name, txt_file in txt_files.items():
                 if os.path.exists(txt_file):
-                    # Modified here: Read raw text file line by line
+                        # Read CSV with pandas (these files have headers)
                     with open(txt_file, 'r') as f:
-                        # strip() removes newline characters (\n) and spaces
-                        paths = [line.strip() for line in f.readlines() if line.strip()]
-                    
-                    split_file_paths[split_name] = paths
-                    print(f"Loaded {len(split_file_paths[split_name])} paths from {split_name} split")
-                else:
-                    print(f"Warning: {txt_file} not found, skipping...")
 
+                            paths = [line.strip() for line in f if line.strip()]
+
+                    split_file_paths[split_name] = paths
+
+                    print(f"Loaded {len(split_file_paths[split_name])} paths from {split_name} split")
+
+                else:
+
+                    print(f"Warning: {txt_file} not found, skipping...")
             # Extract labels from CSV based on subject ID in file path
             matched_subjects = 0
             unmatched_subjects = set()
