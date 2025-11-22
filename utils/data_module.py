@@ -677,14 +677,14 @@ class fMRIDataModule(pl.LightningDataModule):
             """
             ABIDE dataset loading from txt files containing npz file paths.
             Expected structure:
-            - abide_train.txt: CSV format with npz_path column
-            - abide_test.txt: CSV format with npz_path column
-            - abide_val.txt: CSV format with npz_path column
+            - abide_train.txt: Plain text file, one npz file path per line (no headers)
+            - abide_test.txt: Plain text file, one npz file path per line (no headers)
+            - abide_val.txt: Plain text file, one npz file path per line (no headers)
             - abide.csv: CSV file with SUB_ID and AGE_AT_SCAN columns
 
             Labels (age values) are extracted from abide.csv based on subject ID.
             """
-            # Load txt files with npz file paths (they have CSV headers)
+            # Load txt files with npz file paths (plain text, one path per line)
             txt_files = {
                 'train': os.path.join(self.hparams.image_path, 'abide_train.txt'),
                 'val': os.path.join(self.hparams.image_path, 'abide_val.txt'),
@@ -716,14 +716,11 @@ class fMRIDataModule(pl.LightningDataModule):
             split_file_paths = {'train': [], 'val': [], 'test': []}
             for split_name, txt_file in txt_files.items():
                 if os.path.exists(txt_file):
-                    # Read CSV with pandas (these files have headers)
-                    df = pd.read_csv(txt_file)
-                    if 'npz_path' in df.columns:
-                        paths = df['npz_path'].tolist()
-                        split_file_paths[split_name] = paths
-                        print(f"Loaded {len(split_file_paths[split_name])} paths from {split_name} split")
-                    else:
-                        print(f"Warning: {txt_file} does not have 'npz_path' column")
+                    # Read as plain text file (one path per line, no headers)
+                    with open(txt_file, 'r') as f:
+                        paths = [line.strip() for line in f if line.strip()]
+                    split_file_paths[split_name] = paths
+                    print(f"Loaded {len(split_file_paths[split_name])} paths from {split_name} split")
                 else:
                     print(f"Warning: {txt_file} not found, skipping...")
 
