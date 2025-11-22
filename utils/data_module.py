@@ -708,6 +708,9 @@ class fMRIDataModule(pl.LightningDataModule):
                 subject_label_dict[subject_id] = age
 
             print(f"Loaded age values for {len(subject_label_dict)} subjects from CSV")
+            # Debug: Print first few subject IDs from CSV
+            csv_subject_ids = list(subject_label_dict.keys())[:5]
+            print(f"  Sample subject IDs from CSV: {csv_subject_ids}")
 
             # Load file paths from each split SEPARATELY
             split_file_paths = {'train': [], 'val': [], 'test': []}
@@ -729,19 +732,35 @@ class fMRIDataModule(pl.LightningDataModule):
             unmatched_subjects = set()
             age_values = []
 
-            for file_path in split_file_paths['train'] + split_file_paths['val'] + split_file_paths['test']:
+            # Debug: Count total file paths
+            total_file_paths = split_file_paths['train'] + split_file_paths['val'] + split_file_paths['test']
+            print(f"\nProcessing {len(total_file_paths)} total file paths...")
+
+            # Debug: Print first few file paths as examples
+            if len(total_file_paths) > 0:
+                print(f"  Sample file paths:")
+                for i, fp in enumerate(total_file_paths[:3]):
+                    print(f"    {i+1}. {fp}")
+
+            for idx, file_path in enumerate(total_file_paths):
                 # Extract subject ID from file path
                 # Example: ".../CMU_a_0050642_func_preproc/block0000_frames_000000-000039.npz"
                 parent_dir = os.path.basename(os.path.dirname(file_path))
 
                 # Extract subject ID: "CMU_a_0050642_func_preproc" -> "0050642" -> "50642"
+                # Improved logic: Look for any part that is all digits (possibly with leading zeros)
                 parts = parent_dir.split('_')
                 subject_id = None
                 for part in parts:
-                    if part.startswith('00') and part[2:].isdigit():
+                    # Check if this part is a number (with or without leading zeros)
+                    if part.isdigit() and len(part) >= 4:  # At least 4 digits
                         # Remove leading zeros
                         subject_id = str(int(part))
                         break
+
+                # Debug: Print first few extractions
+                if idx < 3:
+                    print(f"  Extracted subject_id from '{parent_dir}': {subject_id}")
 
                 # Look up age from CSV
                 if subject_id and subject_id in subject_label_dict:
@@ -755,20 +774,29 @@ class fMRIDataModule(pl.LightningDataModule):
                 else:
                     if subject_id:
                         unmatched_subjects.add(subject_id)
+                    elif idx < 3:
+                        print(f"    WARNING: Could not extract subject_id from '{parent_dir}'")
 
             # Store the predefined split information
             self.abide_split_file_paths = split_file_paths
 
             # Print statistics
-            age_values = np.array(age_values)
             print(f'\nLoad dataset ABIDE, {len(final_dict)} files from {matched_subjects} matched subjects')
-            print(f"  - Age range: {age_values.min():.2f} - {age_values.max():.2f} years")
-            print(f"  - Age mean ± std: {age_values.mean():.2f} ± {age_values.std():.2f} years")
+
+            if len(age_values) > 0:
+                age_values = np.array(age_values)
+                print(f"  - Age range: {age_values.min():.2f} - {age_values.max():.2f} years")
+                print(f"  - Age mean ± std: {age_values.mean():.2f} ± {age_values.std():.2f} years")
+            else:
+                print(f"  - WARNING: No subjects were successfully matched!")
+                print(f"  - This means subject IDs extracted from file paths don't match CSV subject IDs")
 
             if unmatched_subjects:
                 print(f"  - Warning: {len(unmatched_subjects)} subject IDs in npz files not found in CSV")
                 if len(unmatched_subjects) <= 10:
                     print(f"    Unmatched subjects: {sorted(unmatched_subjects)}")
+                else:
+                    print(f"    First 10 unmatched subjects: {sorted(list(unmatched_subjects))[:10]}")
 
             # Print split statistics
             print(f"\nPredefined split from txt files:")
