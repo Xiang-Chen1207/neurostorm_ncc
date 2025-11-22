@@ -1,0 +1,2 @@
+mode,epoch,accuracy,f1_weighted,num_samples
+test,0,0.5,0.3333333333333333,2

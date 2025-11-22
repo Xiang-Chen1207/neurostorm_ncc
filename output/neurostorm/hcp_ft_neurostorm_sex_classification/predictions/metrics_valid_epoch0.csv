@@ -1,0 +1,2 @@
+mode,epoch,accuracy,f1_weighted,num_samples
+valid,0,1.0,1.0,2

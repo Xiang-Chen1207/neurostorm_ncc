@@ -41,7 +41,7 @@ first_window_size:
 - 4
 - 4
 - 4
-freeze_feature_extractor: true
+freeze_feature_extractor: false
 gamma: 1.0
 gpus: null
 grad_clip: false
@@ -89,7 +89,7 @@ num_heads:
 - 24
 num_nodes: 1
 num_processes: null
-num_sanity_val_steps: 0
+num_sanity_val_steps: 2
 num_workers: 8
 optimizer: AdamW
 overfit_batches: 0.0
