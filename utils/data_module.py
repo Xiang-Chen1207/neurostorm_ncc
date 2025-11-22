@@ -703,7 +703,8 @@ class fMRIDataModule(pl.LightningDataModule):
             # Create a dictionary mapping subject ID to age value
             subject_label_dict = {}
             for _, row in meta_data.iterrows():
-                subject_id = str(row['SUB_ID'])
+                # Convert to int first to remove .0 suffix, then to string
+                subject_id = str(int(row['SUB_ID']))
 
                 # Use AGE_AT_SCAN for regression task (continuous age value)
                 age = float(row['AGE_AT_SCAN'])
@@ -766,8 +767,15 @@ class fMRIDataModule(pl.LightningDataModule):
             # Print statistics
             age_values = np.array(age_values)
             print(f'\nLoad dataset ABIDE, {len(final_dict)} files from {matched_subjects} matched subjects')
-            print(f"  - Age range: {age_values.min():.2f} - {age_values.max():.2f} years")
-            print(f"  - Age mean ± std: {age_values.mean():.2f} ± {age_values.std():.2f} years")
+
+            if len(age_values) > 0:
+                print(f"  - Age range: {age_values.min():.2f} - {age_values.max():.2f} years")
+                print(f"  - Age mean ± std: {age_values.mean():.2f} ± {age_values.std():.2f} years")
+            else:
+                print("  - WARNING: No age values found! Check if:")
+                print("    1. File paths in txt files match the expected format")
+                print("    2. Subject IDs can be extracted from directory names")
+                print("    3. Subject IDs in file paths match those in CSV")
 
             if unmatched_subjects:
                 print(f"  - Warning: {len(unmatched_subjects)} subject IDs in npz files not found in CSV")

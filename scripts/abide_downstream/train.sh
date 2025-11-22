@@ -46,8 +46,7 @@ python /home/chenx/code/neurostorm_ncc/main.py \
   --first_window_size 4 4 4 4 \
   --window_size 4 4 4 4 \
   --load_model_path /home/chenx/code/neurostorm_ncc/pt_fmrifound_mae_ratio0.5.ckpt \
-  --num_sanity_val_steps 0 \
-  --freeze_feature_extractor
+  --num_sanity_val_steps 0
 
 # Notes:
 # - The model will load .npz files directly from the paths specified in the txt files

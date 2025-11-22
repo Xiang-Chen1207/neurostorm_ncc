@@ -11,7 +11,7 @@ if [ ! -z "$1" ]; then
 fi
 
 # Set CUDA devices (modify as needed)
-export CUDA_VISIBLE_DEVICES=4,3
+export CUDA_VISIBLE_DEVICES=0,1,2,4,3
 export NCCL_P2P_DISABLE=1
 
 # Construct project_name
