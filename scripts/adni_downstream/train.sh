@@ -17,7 +17,7 @@ export NCCL_P2P_DISABLE=1
 # Construct project_name
 project_name="adni_ft_neurostorm_ad_classification"
 
-python /home/chenx/code/NeuroSTORM-main/main.py \
+python /home/user/neurostorm_ncc/main.py \
   --accelerator gpu \
   --max_epochs 10 \
   --num_nodes 1 \
@@ -25,7 +25,7 @@ python /home/chenx/code/NeuroSTORM-main/main.py \
   --loggername tensorboard \
   --clf_head_version v1 \
   --dataset_name ADNI \
-  --image_path /home/chenx/code/NeuroSTORM-main/data \
+  --image_path /home/user/neurostorm_ncc/data \
   --batch_size "$batch_size" \
   --num_workers 8 \
   --eval_batch_size "$batch_size" \
@@ -46,7 +46,7 @@ python /home/chenx/code/NeuroSTORM-main/main.py \
   --img_size 96 96 96 20 \
   --first_window_size 4 4 4 4 \
   --window_size 4 4 4 4 \
-  --load_model_path /home/chenx/code/NeuroSTORM-main/pt_fmrifound_mae_ratio0.5.ckpt \
+  --load_model_path /home/user/neurostorm_ncc/pt_fmrifound_mae_ratio0.5.ckpt \
   --num_sanity_val_steps 0 \
   --freeze_feature_extractor
 

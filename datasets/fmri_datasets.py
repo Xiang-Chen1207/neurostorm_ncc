@@ -574,6 +574,7 @@ class ADNI(BaseDataset):
     def _set_data(self, root, subject_dict):
         """
         Set up data list for ADNI dataset.
+        Only keeps the first 20 frames from each file.
         Args:
             root: Not used - paths are provided directly in subject_dict
             subject_dict: Dictionary mapping file_path -> [sex, target_label]
@@ -582,7 +583,8 @@ class ADNI(BaseDataset):
         """
         data = []
         total_files = len(subject_dict)
-        print(f"Processing {total_files} ADNI files to create 20-frame segments...")
+        skipped_files = 0
+        print(f"Processing {total_files} ADNI files - keeping only first 20 frames from each file...")
 
         for i, file_path in enumerate(subject_dict):
             sex, target = subject_dict[file_path]
@@ -594,27 +596,30 @@ class ADNI(BaseDataset):
                 # Use img.shape instead of get_fdata() to avoid loading data into memory
                 num_frames = img.shape[3]  # Time dimension
 
-                # Calculate how many 20-frame segments we can extract
-                # Use continuous splitting: 0-19, 20-39, 40-59, ...
-                # Discard remaining frames that don't fit into a complete segment
-                num_segments = num_frames // self.sequence_length
+                # Only keep files with at least 20 frames
+                if num_frames < self.sequence_length:
+                    print(f"  Skipping {file_path}: only {num_frames} frames (need {self.sequence_length})")
+                    skipped_files += 1
+                    continue
 
-                # Create one data entry per 20-frame segment
-                for seg_idx in range(num_segments):
-                    start_frame = seg_idx * self.sequence_length
-                    subject_name = os.path.basename(file_path)
+                # Only use the first 20 frames (start_frame = 0)
+                start_frame = 0
+                subject_name = os.path.basename(file_path)
 
-                    # Data tuple format: (idx, subject_name, file_path, start_frame, sequence_length, num_frames, target, sex)
-                    data_tuple = (i, subject_name, file_path, start_frame, self.sequence_length, num_frames, target, sex)
-                    data.append(data_tuple)
+                # Data tuple format: (idx, subject_name, file_path, start_frame, sequence_length, num_frames, target, sex)
+                data_tuple = (i, subject_name, file_path, start_frame, self.sequence_length, num_frames, target, sex)
+                data.append(data_tuple)
 
                 # Print progress every 50 files
                 if (i + 1) % 50 == 0 or (i + 1) == total_files:
-                    print(f"  Processed {i + 1}/{total_files} files, created {len(data)} segments so far...")
+                    print(f"  Processed {i + 1}/{total_files} files, created {len(data)} samples so far...")
 
             except Exception as e:
                 print(f"Error loading {file_path}: {e}")
+                skipped_files += 1
                 continue
+
+        print(f"Total: {len(data)} samples created from {total_files} files ({skipped_files} files skipped)")
 
         if self.train:
             self.target_values = np.array([tup[6] for tup in data]).reshape(-1, 1)
