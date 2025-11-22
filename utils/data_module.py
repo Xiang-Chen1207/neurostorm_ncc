@@ -703,7 +703,8 @@ class fMRIDataModule(pl.LightningDataModule):
             # Create a dictionary mapping subject ID to age value
             subject_label_dict = {}
             for _, row in meta_data.iterrows():
-                subject_id = str(row['SUB_ID'])
+                # Convert to int first to remove .0 suffix, then to string
+                subject_id = str(int(row['SUB_ID']))
 
                 # Use AGE_AT_SCAN for regression task (continuous age value)
                 age = float(row['AGE_AT_SCAN'])
