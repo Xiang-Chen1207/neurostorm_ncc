@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 import numpy as np
 import pandas as pd
 from torch.utils.data import DataLoader, Subset
-from datasets.fmri_datasets import HCP1200, ABCD, UKB, Cobre, ADHD200, UCLA, HCPEP, HCPTASK, GOD, MOVIE, TransDiag, ADNI
+from datasets.fmri_datasets import HCP1200, ABCD, UKB, Cobre, ADHD200, UCLA, HCPEP, HCPTASK, GOD, MOVIE, TransDiag, ADNI, HCP
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from .parser import str2bool
 
@@ -76,6 +76,8 @@ class fMRIDataModule(pl.LightningDataModule):
             return TransDiag
         elif self.hparams.dataset_name == 'ADNI':
             return ADNI
+        elif self.hparams.dataset_name == 'HCP':
+            return HCP
         else:
             raise NotImplementedError
 
@@ -580,6 +582,95 @@ class fMRIDataModule(pl.LightningDataModule):
             print(f"  - Val: {len(split_file_paths['val'])} files")
             print(f"  - Test: {len(split_file_paths['test'])} files")
 
+        elif self.hparams.dataset_name == "HCP":
+            """
+            HCP dataset loading from txt files containing npz file paths.
+            Expected structure:
+            - hcp_train.txt: paths to training .npz files
+            - hcp_test.txt: paths to test .npz files
+            - hcp_val.txt: paths to validation .npz files
+            - hcp.csv: CSV file with Subject and Gender columns
+
+            Labels are extracted from hcp.csv based on subject ID.
+            """
+            # Load txt files with npz file paths
+            txt_files = {
+                'train': os.path.join(self.hparams.image_path, 'hcp_train.txt'),
+                'val': os.path.join(self.hparams.image_path, 'hcp_val.txt'),
+                'test': os.path.join(self.hparams.image_path, 'hcp_test.txt')
+            }
+
+            # Load CSV file with labels
+            csv_file = os.path.join(self.hparams.image_path, 'hcp.csv')
+            if not os.path.exists(csv_file):
+                raise FileNotFoundError(f"HCP CSV file not found: {csv_file}")
+
+            meta_data = pd.read_csv(csv_file)
+            # Create a dictionary mapping subject ID to gender
+            subject_gender_dict = {}
+            for _, row in meta_data.iterrows():
+                subject_id = str(row['Subject'])
+                gender = int(row['Gender'])  # 0 or 1
+                subject_gender_dict[subject_id] = gender
+
+            print(f"Loaded gender labels for {len(subject_gender_dict)} subjects from CSV")
+
+            # Load file paths from each split SEPARATELY to preserve the split
+            split_file_paths = {'train': [], 'val': [], 'test': []}
+            for split_name, txt_file in txt_files.items():
+                if os.path.exists(txt_file):
+                    with open(txt_file, 'r') as f:
+                        paths = [line.strip() for line in f.readlines() if line.strip()]
+                        split_file_paths[split_name] = paths
+                    print(f"Loaded {len(split_file_paths[split_name])} paths from {split_name} split")
+                else:
+                    print(f"Warning: {txt_file} not found, skipping...")
+
+            # Extract labels from CSV based on subject ID in file path
+            matched_subjects = 0
+            unmatched_subjects = set()
+
+            for file_path in split_file_paths['train'] + split_file_paths['val'] + split_file_paths['test']:
+                # Extract subject ID from filename
+                # Example: "/mnt/.../100307__REST1_LR_hp2000_clean_0000-0199_1.npz" -> "100307"
+                filename = os.path.basename(file_path)
+                subject_id = filename.split('__')[0] if '__' in filename else filename.split('_')[0]
+
+                # Look up gender from CSV
+                if subject_id in subject_gender_dict:
+                    gender = subject_gender_dict[subject_id]
+                    target = gender  # For sex classification task
+                    sex = gender
+
+                    # Use file path as the key (unique identifier)
+                    final_dict[file_path] = [sex, target]
+                    matched_subjects += 1
+                else:
+                    unmatched_subjects.add(subject_id)
+
+            # Store the predefined split information
+            self.hcp_split_file_paths = split_file_paths
+
+            # Print statistics
+            target_counts = defaultdict(int)
+            for file_path, (sex, target) in final_dict.items():
+                target_counts[target] += 1
+
+            print(f'\nLoad dataset HCP, {len(final_dict)} files from {matched_subjects} matched subjects')
+            print(f"  - Female (label=0): {target_counts[0]} files")
+            print(f"  - Male (label=1): {target_counts[1]} files")
+
+            if unmatched_subjects:
+                print(f"  - Warning: {len(unmatched_subjects)} subject IDs in npz files not found in CSV")
+                if len(unmatched_subjects) <= 10:
+                    print(f"    Unmatched subjects: {sorted(unmatched_subjects)}")
+
+            # Print split statistics
+            print(f"\nPredefined split from txt files:")
+            print(f"  - Train: {len(split_file_paths['train'])} files")
+            print(f"  - Val: {len(split_file_paths['val'])} files")
+            print(f"  - Test: {len(split_file_paths['test'])} files")
+
         return final_dict
 
     def setup(self, stage=None):
@@ -608,6 +699,12 @@ class fMRIDataModule(pl.LightningDataModule):
             train_names = self.adni_split_file_paths['train']
             val_names = self.adni_split_file_paths['val']
             test_names = self.adni_split_file_paths['test']
+        # For HCP dataset, use predefined split from txt files
+        elif self.hparams.dataset_name == "HCP" and hasattr(self, 'hcp_split_file_paths'):
+            print("\n[INFO] Using predefined HCP split from txt files (not random split)")
+            train_names = self.hcp_split_file_paths['train']
+            val_names = self.hcp_split_file_paths['val']
+            test_names = self.hcp_split_file_paths['test']
         elif os.path.exists(self.split_file_path):
             train_names, val_names, test_names = self.load_split()
         else:

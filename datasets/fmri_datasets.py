@@ -625,3 +625,148 @@ class ADNI(BaseDataset):
             self.target_values = np.array([tup[6] for tup in data]).reshape(-1, 1)
 
         return data
+
+
+class HCP(BaseDataset):
+    """
+    HCP dataset for sex classification.
+    Loads .npz files and extracts the first 20 frames.
+    File paths are provided in txt files (hcp_train.txt, hcp_val.txt, hcp_test.txt).
+    Labels come from hcp.csv.
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def load_sequence(self, subject_path, start_frame, sample_duration, num_frames=None):
+        """
+        Load a sequence directly from .npz file.
+        Args:
+            subject_path: Full path to the .npz file
+            start_frame: Starting frame index (should be 0)
+            sample_duration: Number of frames to load (should be 20)
+            num_frames: Total number of frames in the volume (unused)
+        Returns:
+            Tensor of shape (1, H, W, D, 20)
+        """
+        # Load the npz file
+        data = np.load(subject_path)
+
+        # The npz file should contain fMRI data
+        # Assuming the key is 'data' or similar, we need to check the actual structure
+        # Common keys might be 'data', 'arr_0', etc.
+        if 'data' in data:
+            fmri_data = data['data']
+        elif 'arr_0' in data:
+            fmri_data = data['arr_0']
+        else:
+            # Take the first array in the npz file
+            key = list(data.keys())[0]
+            fmri_data = data[key]
+
+        # Extract the first 20 frames
+        # Assuming shape is (H, W, D, T) or (T, H, W, D)
+        if fmri_data.shape[-1] >= sample_duration:
+            # Last dimension is time
+            sequence = fmri_data[:, :, :, start_frame:start_frame + sample_duration]
+        elif fmri_data.shape[0] >= sample_duration:
+            # First dimension is time, need to transpose
+            sequence = fmri_data[start_frame:start_frame + sample_duration, :, :, :]
+            sequence = np.transpose(sequence, (1, 2, 3, 0))  # (T, H, W, D) -> (H, W, D, T)
+        else:
+            raise ValueError(f"npz file {subject_path} has insufficient frames: {fmri_data.shape}")
+
+        # Convert to tensor and add batch dimension
+        # Shape: (1, H, W, D, 20)
+        y = torch.from_numpy(sequence).float().unsqueeze(0)
+
+        return y
+
+    def _set_data(self, root, subject_dict):
+        """
+        Set up data list for HCP dataset.
+        Only uses the first 20 frames from the FIRST .npz file of each subject.
+        Args:
+            root: Not used - paths are provided directly in subject_dict
+            subject_dict: Dictionary mapping file_path -> [sex, target_label]
+        Returns:
+            List of tuples: (index, subject_name, file_path, start_frame, stride, num_frames, target, sex)
+        """
+        data = []
+        total_files = len(subject_dict)
+        skipped_files = 0
+        processed_subjects = set()  # Track which subjects we've already processed
+
+        print(f"Processing {total_files} HCP files - keeping only first file per subject, first 20 frames...")
+
+        # Sort file paths to ensure consistent ordering (e.g., _1.npz before _2.npz)
+        sorted_file_paths = sorted(subject_dict.keys())
+
+        for i, file_path in enumerate(sorted_file_paths):
+            sex, target = subject_dict[file_path]
+
+            try:
+                # Extract subject ID from filename
+                filename = os.path.basename(file_path)
+                # Example: "100307__REST1_LR_hp2000_clean_0000-0199_1.npz" -> "100307"
+                subject_id = filename.split('__')[0] if '__' in filename else filename.split('_')[0]
+
+                # Skip if we've already processed this subject
+                if subject_id in processed_subjects:
+                    skipped_files += 1
+                    continue
+
+                # Mark this subject as processed
+                processed_subjects.add(subject_id)
+
+                # Check if file exists
+                if not os.path.exists(file_path):
+                    print(f"  Warning: File not found: {file_path}")
+                    skipped_files += 1
+                    continue
+
+                # Load npz file to check number of frames
+                npz_data = np.load(file_path)
+
+                # Get the fMRI data array
+                if 'data' in npz_data:
+                    fmri_data = npz_data['data']
+                elif 'arr_0' in npz_data:
+                    fmri_data = npz_data['arr_0']
+                else:
+                    key = list(npz_data.keys())[0]
+                    fmri_data = npz_data[key]
+
+                # Determine number of frames (could be first or last dimension)
+                if fmri_data.shape[-1] >= self.sequence_length:
+                    num_frames = fmri_data.shape[-1]
+                elif fmri_data.shape[0] >= self.sequence_length:
+                    num_frames = fmri_data.shape[0]
+                else:
+                    print(f"  Skipping {file_path}: insufficient frames")
+                    skipped_files += 1
+                    continue
+
+                # Only use the first 20 frames (start_frame = 0)
+                start_frame = 0
+                subject_name = os.path.basename(file_path)
+
+                # Data tuple format: (idx, subject_name, file_path, start_frame, sequence_length, num_frames, target, sex)
+                data_tuple = (i, subject_id, file_path, start_frame, self.sequence_length, num_frames, target, sex)
+                data.append(data_tuple)
+
+                # Print progress every 1000 files checked (not every 1000 added)
+                if (i + 1) % 1000 == 0 or (i + 1) == total_files:
+                    print(f"  Checked {i + 1}/{total_files} files, created {len(data)} samples from {len(processed_subjects)} unique subjects...")
+
+            except Exception as e:
+                print(f"Error loading {file_path}: {e}")
+                skipped_files += 1
+                continue
+
+        print(f"Total: {len(data)} samples created from {len(processed_subjects)} unique subjects")
+        print(f"  (Skipped {skipped_files} files: duplicates or errors)")
+
+        if self.train:
+            self.target_values = np.array([tup[6] for tup in data]).reshape(-1, 1)
+
+        return data
