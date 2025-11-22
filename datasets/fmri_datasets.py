@@ -684,7 +684,7 @@ class HCP(BaseDataset):
     def _set_data(self, root, subject_dict):
         """
         Set up data list for HCP dataset.
-        Only uses the first 20 frames from each .npz file.
+        Only uses the first 20 frames from the FIRST .npz file of each subject.
         Args:
             root: Not used - paths are provided directly in subject_dict
             subject_dict: Dictionary mapping file_path -> [sex, target_label]
@@ -694,12 +694,30 @@ class HCP(BaseDataset):
         data = []
         total_files = len(subject_dict)
         skipped_files = 0
-        print(f"Processing {total_files} HCP files - keeping only first 20 frames from each file...")
+        processed_subjects = set()  # Track which subjects we've already processed
 
-        for i, file_path in enumerate(subject_dict):
+        print(f"Processing {total_files} HCP files - keeping only first file per subject, first 20 frames...")
+
+        # Sort file paths to ensure consistent ordering (e.g., _1.npz before _2.npz)
+        sorted_file_paths = sorted(subject_dict.keys())
+
+        for i, file_path in enumerate(sorted_file_paths):
             sex, target = subject_dict[file_path]
 
             try:
+                # Extract subject ID from filename
+                filename = os.path.basename(file_path)
+                # Example: "100307__REST1_LR_hp2000_clean_0000-0199_1.npz" -> "100307"
+                subject_id = filename.split('__')[0] if '__' in filename else filename.split('_')[0]
+
+                # Skip if we've already processed this subject
+                if subject_id in processed_subjects:
+                    skipped_files += 1
+                    continue
+
+                # Mark this subject as processed
+                processed_subjects.add(subject_id)
+
                 # Check if file exists
                 if not os.path.exists(file_path):
                     print(f"  Warning: File not found: {file_path}")
@@ -732,23 +750,21 @@ class HCP(BaseDataset):
                 start_frame = 0
                 subject_name = os.path.basename(file_path)
 
-                # Extract subject ID from filename (e.g., "100307__REST1_LR_hp2000_clean_0000-0199_1.npz" -> "100307")
-                subject_id = subject_name.split('__')[0] if '__' in subject_name else subject_name.split('_')[0]
-
                 # Data tuple format: (idx, subject_name, file_path, start_frame, sequence_length, num_frames, target, sex)
                 data_tuple = (i, subject_id, file_path, start_frame, self.sequence_length, num_frames, target, sex)
                 data.append(data_tuple)
 
-                # Print progress every 1000 files
+                # Print progress every 1000 files checked (not every 1000 added)
                 if (i + 1) % 1000 == 0 or (i + 1) == total_files:
-                    print(f"  Processed {i + 1}/{total_files} files, created {len(data)} samples so far...")
+                    print(f"  Checked {i + 1}/{total_files} files, created {len(data)} samples from {len(processed_subjects)} unique subjects...")
 
             except Exception as e:
                 print(f"Error loading {file_path}: {e}")
                 skipped_files += 1
                 continue
 
-        print(f"Total: {len(data)} samples created from {total_files} files ({skipped_files} files skipped)")
+        print(f"Total: {len(data)} samples created from {len(processed_subjects)} unique subjects")
+        print(f"  (Skipped {skipped_files} files: duplicates or errors)")
 
         if self.train:
             self.target_values = np.array([tup[6] for tup in data]).reshape(-1, 1)
