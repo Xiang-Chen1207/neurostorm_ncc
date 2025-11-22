@@ -680,9 +680,9 @@ class fMRIDataModule(pl.LightningDataModule):
             - abide_train.txt: CSV format with npz_path column
             - abide_test.txt: CSV format with npz_path column
             - abide_val.txt: CSV format with npz_path column
-            - abide.csv: CSV file with SUB_ID and age_group columns
+            - abide.csv: CSV file with SUB_ID and AGE_AT_SCAN columns
 
-            Labels are extracted from abide.csv based on subject ID.
+            Labels (age values) are extracted from abide.csv based on subject ID.
             """
             # Load txt files with npz file paths (they have CSV headers)
             txt_files = {
@@ -697,18 +697,17 @@ class fMRIDataModule(pl.LightningDataModule):
                 raise FileNotFoundError(f"ABIDE CSV file not found: {csv_file}")
 
             meta_data = pd.read_csv(csv_file)
-            # Create a dictionary mapping subject ID to target label
+            # Create a dictionary mapping subject ID to age value
             subject_label_dict = {}
             for _, row in meta_data.iterrows():
                 subject_id = str(row['SUB_ID'])
 
-                # Use age_group as target for classification task
-                # You can change this to use other columns like age_group_3, age_group_4, etc.
-                target = int(row['age_group'])
+                # Use AGE_AT_SCAN for regression task (continuous age value)
+                age = float(row['AGE_AT_SCAN'])
 
-                subject_label_dict[subject_id] = target
+                subject_label_dict[subject_id] = age
 
-            print(f"Loaded age group labels for {len(subject_label_dict)} subjects from CSV")
+            print(f"Loaded age values for {len(subject_label_dict)} subjects from CSV")
 
             # Load file paths from each split SEPARATELY
             split_file_paths = {'train': [], 'val': [], 'test': []}
@@ -728,6 +727,7 @@ class fMRIDataModule(pl.LightningDataModule):
             # Extract labels from CSV based on subject ID in file path
             matched_subjects = 0
             unmatched_subjects = set()
+            age_values = []
 
             for file_path in split_file_paths['train'] + split_file_paths['val'] + split_file_paths['test']:
                 # Extract subject ID from file path
@@ -743,14 +743,15 @@ class fMRIDataModule(pl.LightningDataModule):
                         subject_id = str(int(part))
                         break
 
-                # Look up label from CSV
+                # Look up age from CSV
                 if subject_id and subject_id in subject_label_dict:
-                    target = subject_label_dict[subject_id]
+                    age = subject_label_dict[subject_id]
                     sex = 0  # Not using sex for this task
 
                     # Use file path as the key (unique identifier)
-                    final_dict[file_path] = [sex, target]
+                    final_dict[file_path] = [sex, age]
                     matched_subjects += 1
+                    age_values.append(age)
                 else:
                     if subject_id:
                         unmatched_subjects.add(subject_id)
@@ -759,13 +760,10 @@ class fMRIDataModule(pl.LightningDataModule):
             self.abide_split_file_paths = split_file_paths
 
             # Print statistics
-            target_counts = defaultdict(int)
-            for file_path, (sex, target) in final_dict.items():
-                target_counts[target] += 1
-
+            age_values = np.array(age_values)
             print(f'\nLoad dataset ABIDE, {len(final_dict)} files from {matched_subjects} matched subjects')
-            for age_group, count in sorted(target_counts.items()):
-                print(f"  - Age group {age_group}: {count} files")
+            print(f"  - Age range: {age_values.min():.2f} - {age_values.max():.2f} years")
+            print(f"  - Age mean ± std: {age_values.mean():.2f} ± {age_values.std():.2f} years")
 
             if unmatched_subjects:
                 print(f"  - Warning: {len(unmatched_subjects)} subject IDs in npz files not found in CSV")

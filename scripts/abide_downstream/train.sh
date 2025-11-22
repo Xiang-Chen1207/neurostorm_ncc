@@ -1,5 +1,5 @@
 #!/bin/bash
-# Fine-tuning NeuroSTORM on ABIDE dataset for age group classification
+# Fine-tuning NeuroSTORM on ABIDE dataset for age regression
 # Usage: bash scripts/abide_downstream/train.sh [batch_size]
 
 # Set default batch_size
@@ -15,7 +15,7 @@ export CUDA_VISIBLE_DEVICES=0,1
 export NCCL_P2P_DISABLE=1
 
 # Construct project_name
-project_name="abide_ft_neurostorm_age_classification"
+project_name="abide_ft_neurostorm_age_regression"
 
 python /home/user/neurostorm_ncc/main.py \
   --accelerator gpu \
@@ -33,9 +33,8 @@ python /home/user/neurostorm_ncc/main.py \
   --c_multiplier 2 \
   --last_layer_full_MSA True \
   --downstream_task_id 1 \
-  --downstream_task_type "classification" \
-  --num_classes 4 \
-  --task_name "age_group" \
+  --downstream_task_type "regression" \
+  --task_name "age" \
   --dataset_split_num 1 \
   --seed 1234 \
   --learning_rate 5e-5 \
@@ -53,11 +52,11 @@ python /home/user/neurostorm_ncc/main.py \
 # Notes:
 # - The model will load .npz files directly from the paths specified in the txt files
 # - Only the first 20 frames from the first npz file of each subject are used
-# - Labels (age_group 0-3) are extracted from abide.csv based on subject ID
+# - Labels (continuous age values) are extracted from AGE_AT_SCAN column in abide.csv
 # - Subject ID is extracted from directory name (e.g., CMU_a_0050642_func_preproc -> 50642)
 # - Adjust --batch_size based on your GPU memory (default: 2)
 # - Adjust CUDA_VISIBLE_DEVICES based on available GPUs
 # - Pre-trained model path: /home/user/neurostorm_ncc/pt_fmrifound_mae_ratio0.5.ckpt
-# - Output will include predictions CSV with predicted and true labels
-# - Metrics CSV will include ACC and F1-weighted scores
-# - This is a 4-class age group classification task
+# - Output will include predictions CSV with predicted and true age values
+# - Metrics CSV will include Pearson correlation (R²) and MSE
+# - This is an age regression task
