@@ -733,7 +733,15 @@ class fMRIDataModule(pl.LightningDataModule):
             unmatched_subjects = set()
             age_values = []
 
-            for file_path in split_file_paths['train'] + split_file_paths['val'] + split_file_paths['test']:
+            # Debug: Print first few file paths and extracted subject IDs
+            all_file_paths = split_file_paths['train'] + split_file_paths['val'] + split_file_paths['test']
+            print(f"\n[DEBUG] Total file paths to process: {len(all_file_paths)}")
+            print(f"[DEBUG] First 3 file paths:")
+            for fp in all_file_paths[:3]:
+                print(f"  {fp}")
+            print(f"\n[DEBUG] First 5 subject IDs in CSV: {list(subject_label_dict.keys())[:5]}")
+
+            for file_path in all_file_paths:
                 # Extract subject ID from file path
                 # Example: ".../CMU_a_0050642_func_preproc/block0000_frames_000000-000039.npz"
                 parent_dir = os.path.basename(os.path.dirname(file_path))
@@ -746,6 +754,20 @@ class fMRIDataModule(pl.LightningDataModule):
                         # Remove leading zeros
                         subject_id = str(int(part))
                         break
+
+                # Debug: Print first few extractions
+                if matched_subjects + len(unmatched_subjects) < 5:
+                    in_dict = subject_id in subject_label_dict if subject_id else False
+                    print(f"[DEBUG] Iteration {matched_subjects + len(unmatched_subjects) + 1}:")
+                    print(f"  file_path: {file_path}")
+                    print(f"  parent_dir: {parent_dir}")
+                    print(f"  parts: {parts}")
+                    print(f"  extracted subject_id: '{subject_id}'")
+                    print(f"  subject_id in dict: {in_dict}")
+                    if subject_id and not in_dict:
+                        # Show some similar keys for debugging
+                        similar_keys = [k for k in list(subject_label_dict.keys())[:20] if subject_id in k or k in subject_id]
+                        print(f"  similar keys in dict: {similar_keys if similar_keys else 'none found'}")
 
                 # Look up age from CSV
                 if subject_id and subject_id in subject_label_dict:
@@ -766,8 +788,15 @@ class fMRIDataModule(pl.LightningDataModule):
             # Print statistics
             age_values = np.array(age_values)
             print(f'\nLoad dataset ABIDE, {len(final_dict)} files from {matched_subjects} matched subjects')
-            print(f"  - Age range: {age_values.min():.2f} - {age_values.max():.2f} years")
-            print(f"  - Age mean ± std: {age_values.mean():.2f} ± {age_values.std():.2f} years")
+
+            if len(age_values) > 0:
+                print(f"  - Age range: {age_values.min():.2f} - {age_values.max():.2f} years")
+                print(f"  - Age mean ± std: {age_values.mean():.2f} ± {age_values.std():.2f} years")
+            else:
+                print("  - WARNING: No age values found! Check if:")
+                print("    1. File paths in txt files match the expected format")
+                print("    2. Subject IDs can be extracted from directory names")
+                print("    3. Subject IDs in file paths match those in CSV")
 
             if unmatched_subjects:
                 print(f"  - Warning: {len(unmatched_subjects)} subject IDs in npz files not found in CSV")

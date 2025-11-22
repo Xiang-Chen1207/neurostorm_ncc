@@ -1,5 +1,9 @@
 import os
+import warnings
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+
+# Suppress pkg_resources deprecation warning from lightning_fabric
+warnings.filterwarnings("ignore", message=".*pkg_resources is deprecated.*")
 
 import torch
 from collections import OrderedDict
