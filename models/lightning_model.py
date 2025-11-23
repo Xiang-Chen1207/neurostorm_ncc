@@ -259,6 +259,48 @@ class LightningModel(pl.LightningModule):
         
         return loss
 
+    def _gather_predictions_ddp(self, subj_array, logits, targets):
+        """
+        Gather predictions from all GPUs in DDP mode.
+
+        Args:
+            subj_array: Array of subject names (numpy array)
+            logits: Tensor of logits from current GPU
+            targets: Tensor of targets from current GPU
+
+        Returns:
+            Tuple of (gathered_subjects, gathered_logits, gathered_targets)
+        """
+        world_size = torch.distributed.get_world_size()
+
+        # Prepare data for gathering
+        local_data = {
+            'subjects': subj_array.tolist(),
+            'logits': logits.cpu(),
+            'targets': targets.cpu()
+        }
+
+        # Gather data from all processes
+        gathered_data = [None for _ in range(world_size)]
+        torch.distributed.all_gather_object(gathered_data, local_data)
+
+        # Merge data from all GPUs
+        all_subjects = []
+        all_logits = []
+        all_targets = []
+
+        for data in gathered_data:
+            all_subjects.extend(data['subjects'])
+            all_logits.append(data['logits'])
+            all_targets.append(data['targets'])
+
+        # Convert back to expected format
+        merged_subjects = np.array(all_subjects)
+        merged_logits = torch.cat(all_logits, dim=0)
+        merged_targets = torch.cat(all_targets, dim=0)
+
+        return merged_subjects, merged_logits, merged_targets
+
     def _evaluate_metrics(self, subj_array, total_out_logits, total_out_target, mode):
         subjects = np.unique(subj_array)
 
@@ -579,7 +621,18 @@ class LightningModel(pl.LightningModule):
             total_out_test_logits = torch.cat(out_test_logits_list, dim=0)
             total_out_test_target = torch.cat(out_test_target_list, dim=0)
 
-            # evaluate 
+            # Gather predictions from all GPUs in DDP mode
+            if 'ddp' in self.hparams.strategy:
+                # Gather validation data
+                subj_valid, total_out_valid_logits, total_out_valid_target = self._gather_predictions_ddp(
+                    subj_valid, total_out_valid_logits, total_out_valid_target
+                )
+                # Gather test data
+                subj_test, total_out_test_logits, total_out_test_target = self._gather_predictions_ddp(
+                    subj_test, total_out_test_logits, total_out_test_target
+                )
+
+            # evaluate
             self._evaluate_metrics(subj_valid, total_out_valid_logits, total_out_valid_target, mode="valid")
             self._evaluate_metrics(subj_test, total_out_test_logits, total_out_test_target, mode="test")
             
@@ -649,6 +702,13 @@ class LightningModel(pl.LightningModule):
             subj_test = np.array(subj_test)
             total_out_test_logits = torch.cat(out_test_logits_list, dim=0)
             total_out_test_target = torch.cat(out_test_target_list, dim=0)
+
+            # Gather predictions from all GPUs in DDP mode
+            if 'ddp' in self.hparams.strategy:
+                subj_test, total_out_test_logits, total_out_test_target = self._gather_predictions_ddp(
+                    subj_test, total_out_test_logits, total_out_test_target
+                )
+
             self._evaluate_metrics(subj_test, total_out_test_logits, total_out_test_target, mode="test")
     
     def on_train_epoch_start(self) -> None:

@@ -865,7 +865,7 @@ class fMRIDataModule(pl.LightningDataModule):
             return {
                 "batch_size": self.hparams.batch_size if train else self.hparams.eval_batch_size,
                 "num_workers": self.hparams.num_workers,
-                "drop_last": True,
+                "drop_last": train,
                 "pin_memory": False,
                 "persistent_workers": (train and (self.hparams.strategy == 'ddp')),
                 "shuffle": train

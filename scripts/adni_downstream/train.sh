@@ -3,7 +3,7 @@
 # Usage: bash scripts/adni_downstream/ft_neurostorm_adni_ad_classification.sh [batch_size]
 
 # Set default batch_size
-batch_size="2"
+batch_size="4"
 
 # Override with the arguments if provided
 if [ ! -z "$1" ]; then
@@ -11,21 +11,21 @@ if [ ! -z "$1" ]; then
 fi
 
 # Set CUDA devices (modify as needed)
-export CUDA_VISIBLE_DEVICES=0,1,2,4,3
+export CUDA_VISIBLE_DEVICES=0,3,4
 export NCCL_P2P_DISABLE=1
 
 # Construct project_name
-project_name="adni_ft_neurostorm_ad_classification"
+project_name="adni_ft_neurostorm_ad_classification_epoch30"
 
-python /home/chenx/code/NeuroSTORM-main/main.py \
+python /home/chenx/code/neurostorm_ncc/main.py \
   --accelerator gpu \
-  --max_epochs 10 \
+  --max_epochs 30 \
   --num_nodes 1 \
   --strategy ddp \
   --loggername tensorboard \
   --clf_head_version v1 \
   --dataset_name ADNI \
-  --image_path /home/chenx/code/NeuroSTORM-main/data \
+  --image_path /home/chenx/code/neurostorm_ncc/data \
   --batch_size "$batch_size" \
   --num_workers 8 \
   --eval_batch_size "$batch_size" \
@@ -46,7 +46,7 @@ python /home/chenx/code/NeuroSTORM-main/main.py \
   --img_size 96 96 96 20 \
   --first_window_size 4 4 4 4 \
   --window_size 4 4 4 4 \
-  --load_model_path /home/chenx/code/NeuroSTORM-main/pt_fmrifound_mae_ratio0.5.ckpt \
+  --load_model_path /home/chenx/code/neurostorm_ncc/pt_fmrifound_mae_ratio0.5.ckpt \
   --num_sanity_val_steps 0
 
 # Notes:
