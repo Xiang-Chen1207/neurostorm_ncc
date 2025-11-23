@@ -1,8 +1,9 @@
 # 1. 使用官方的 Miniconda3 基础镜像（自带 Conda）
-FROM continuumio/miniconda3
+FROM nvcr.io/nvidia/pytorch:24.03-py3
+
 
 # 2. 设置工作目录
-WORKDIR /app
+WORKDIR /workspace
 
 # 3. 把你的配置单复制进去
 COPY environment.yml .
@@ -26,4 +27,4 @@ RUN echo "Conda environment path is: $PATH"
 COPY . .
 
 # 8. 启动命令
-CMD ["python", "app.py"]
+CMD ["/bin/bash"]

@@ -540,30 +540,47 @@ class TransDiag(BaseDataset):
 class ADNI(BaseDataset):
     """
     ADNI dataset for Alzheimer's Disease classification (AD vs CN).
-    Loads .nii.gz files directly and splits them into 20-frame segments.
+    Loads .npz files and extracts the first 20 frames.
+    Only uses the FIRST .npz file of each subject (when multiple files exist).
     """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
     def load_sequence(self, subject_path, start_frame, sample_duration, num_frames=None):
         """
-        Load a sequence directly from .nii.gz file.
+        Load a sequence directly from .npz file.
         Args:
-            subject_path: Full path to the .nii.gz file
-            start_frame: Starting frame index
+            subject_path: Full path to the .npz file
+            start_frame: Starting frame index (should be 0)
             sample_duration: Number of frames to load (should be 20)
-            num_frames: Total number of frames in the volume (unused for simplicity)
+            num_frames: Total number of frames in the volume (unused)
         Returns:
             Tensor of shape (1, H, W, D, 20)
         """
-        import nibabel as nib
+        # Load the npz file
+        data = np.load(subject_path)
 
-        # Load the entire 4D volume
-        img = nib.load(subject_path)
-        data = img.get_fdata()  # Shape: (H, W, D, T)
+        # The npz file should contain fMRI data
+        if 'data' in data:
+            fmri_data = data['data']
+        elif 'arr_0' in data:
+            fmri_data = data['arr_0']
+        else:
+            # Take the first array in the npz file
+            key = list(data.keys())[0]
+            fmri_data = data[key]
 
-        # Extract the sequence [start_frame : start_frame + sample_duration]
-        sequence = data[:, :, :, start_frame:start_frame + sample_duration]
+        # Extract the first 20 frames
+        # Assuming shape is (H, W, D, T) or (T, H, W, D)
+        if fmri_data.shape[-1] >= sample_duration:
+            # Last dimension is time
+            sequence = fmri_data[:, :, :, start_frame:start_frame + sample_duration]
+        elif fmri_data.shape[0] >= sample_duration:
+            # First dimension is time, need to transpose
+            sequence = fmri_data[start_frame:start_frame + sample_duration, :, :, :]
+            sequence = np.transpose(sequence, (1, 2, 3, 0))  # (T, H, W, D) -> (H, W, D, T)
+        else:
+            raise ValueError(f"npz file {subject_path} has insufficient frames: {fmri_data.shape}")
 
         # Convert to tensor and add batch dimension
         # Shape: (1, H, W, D, 20)
@@ -574,7 +591,7 @@ class ADNI(BaseDataset):
     def _set_data(self, root, subject_dict):
         """
         Set up data list for ADNI dataset.
-        Only keeps the first 20 frames from each file.
+        Only uses the first 20 frames from the FIRST .npz file of each subject.
         Args:
             root: Not used - paths are provided directly in subject_dict
             subject_dict: Dictionary mapping file_path -> [sex, target_label]
@@ -584,42 +601,90 @@ class ADNI(BaseDataset):
         data = []
         total_files = len(subject_dict)
         skipped_files = 0
-        print(f"Processing {total_files} ADNI files - keeping only first 20 frames from each file...")
+        processed_subjects = set()  # Track which subjects we've already processed
+        error_count = 0
+        file_not_found_count = 0
 
-        for i, file_path in enumerate(subject_dict):
+        print(f"Processing {total_files} ADNI files - keeping only first file per subject, first 20 frames...")
+
+        # Sort file paths to ensure consistent ordering (seg000 before seg001)
+        sorted_file_paths = sorted(subject_dict.keys())
+
+        for i, file_path in enumerate(sorted_file_paths):
             sex, target = subject_dict[file_path]
 
-            # Load nii.gz header to get the number of frames (without loading data)
-            import nibabel as nib
             try:
-                img = nib.load(file_path)
-                # Use img.shape instead of get_fdata() to avoid loading data into memory
-                num_frames = img.shape[3]  # Time dimension
+                # Extract subject ID from filename
+                # Example: "sub-003S6264_ses-01_task-rest_space-MNI152NLin6Asym_res-02_desc-preproc_bold_seg000.npz"
+                filename = os.path.basename(file_path)
 
-                # Only keep files with at least 20 frames
-                if num_frames < self.sequence_length:
-                    print(f"  Skipping {file_path}: only {num_frames} frames (need {self.sequence_length})")
+                # Extract subject ID: "sub-003S6264_..." -> "003S6264"
+                if filename.startswith('sub-'):
+                    subject_id = filename.split('_')[0].replace('sub-', '')
+                else:
+                    # Fallback: use the whole filename without extension
+                    subject_id = filename.rsplit('.', 1)[0]
+
+                # Skip if we've already processed this subject
+                if subject_id in processed_subjects:
+                    skipped_files += 1
+                    continue
+
+                # Mark this subject as processed
+                processed_subjects.add(subject_id)
+
+                # Check if file exists
+                if not os.path.exists(file_path):
+                    if file_not_found_count < 5:  # Only print first 5 missing files
+                        print(f"  Warning: File not found: {file_path}")
+                    file_not_found_count += 1
+                    skipped_files += 1
+                    continue
+
+                # Load npz file to check number of frames
+                npz_data = np.load(file_path)
+
+                # Get the fMRI data array
+                if 'data' in npz_data:
+                    fmri_data = npz_data['data']
+                elif 'arr_0' in npz_data:
+                    fmri_data = npz_data['arr_0']
+                else:
+                    key = list(npz_data.keys())[0]
+                    fmri_data = npz_data[key]
+
+                # Determine number of frames (could be first or last dimension)
+                if fmri_data.shape[-1] >= self.sequence_length:
+                    num_frames = fmri_data.shape[-1]
+                elif fmri_data.shape[0] >= self.sequence_length:
+                    num_frames = fmri_data.shape[0]
+                else:
+                    if error_count < 5:
+                        print(f"  Skipping {file_path}: insufficient frames (shape: {fmri_data.shape})")
+                    error_count += 1
                     skipped_files += 1
                     continue
 
                 # Only use the first 20 frames (start_frame = 0)
                 start_frame = 0
-                subject_name = os.path.basename(file_path)
 
-                # Data tuple format: (idx, subject_name, file_path, start_frame, sequence_length, num_frames, target, sex)
-                data_tuple = (i, subject_name, file_path, start_frame, self.sequence_length, num_frames, target, sex)
+                # Data tuple format: (idx, subject_id, file_path, start_frame, sequence_length, num_frames, target, sex)
+                data_tuple = (i, subject_id, file_path, start_frame, self.sequence_length, num_frames, target, sex)
                 data.append(data_tuple)
 
-                # Print progress every 50 files
+                # Print progress every 50 files checked
                 if (i + 1) % 50 == 0 or (i + 1) == total_files:
-                    print(f"  Processed {i + 1}/{total_files} files, created {len(data)} samples so far...")
+                    print(f"  Checked {i + 1}/{total_files} files, created {len(data)} samples from {len(processed_subjects)} unique subjects...")
 
             except Exception as e:
-                print(f"Error loading {file_path}: {e}")
+                if error_count < 5:  # Only print first 5 errors
+                    print(f"Error loading {file_path}: {e}")
+                error_count += 1
                 skipped_files += 1
                 continue
 
-        print(f"Total: {len(data)} samples created from {total_files} files ({skipped_files} files skipped)")
+        print(f"Total: {len(data)} samples created from {len(processed_subjects)} unique subjects")
+        print(f"  (Skipped {skipped_files} files: {file_not_found_count} not found, {error_count} load errors, {skipped_files - file_not_found_count - error_count} duplicates)")
 
         if self.train:
             self.target_values = np.array([tup[6] for tup in data]).reshape(-1, 1)
