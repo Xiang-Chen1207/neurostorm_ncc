@@ -845,8 +845,8 @@ class HCP(BaseDataset):
 
 class ABIDE(BaseDataset):
     """
-    ABIDE dataset for age group classification.
-    Loads .npz files and extracts the first 20 frames.
+    ABIDE dataset for age regression.
+    Loads .npz files and extracts the first 40 frames.
     File paths are provided in txt files (abide_train.txt, abide_val.txt, abide_test.txt).
     Labels come from abide.csv.
     """
@@ -859,10 +859,10 @@ class ABIDE(BaseDataset):
         Args:
             subject_path: Full path to the .npz file
             start_frame: Starting frame index (should be 0)
-            sample_duration: Number of frames to load (should be 20)
+            sample_duration: Number of frames to load (configurable, default: 40)
             num_frames: Total number of frames in the volume (unused)
         Returns:
-            Tensor of shape (1, H, W, D, 20)
+            Tensor of shape (1, H, W, D, T) where T = sample_duration
         """
         # Load the npz file
         data = np.load(subject_path)
@@ -876,7 +876,7 @@ class ABIDE(BaseDataset):
             key = list(data.keys())[0]
             fmri_data = data[key]
 
-        # Extract the first 20 frames
+        # Extract the specified number of frames (sample_duration)
         # Assuming shape is (H, W, D, T) or (T, H, W, D)
         if fmri_data.shape[-1] >= sample_duration:
             # Last dimension is time
@@ -889,7 +889,7 @@ class ABIDE(BaseDataset):
             raise ValueError(f"npz file {subject_path} has insufficient frames: {fmri_data.shape}")
 
         # Convert to tensor and add batch dimension
-        # Shape: (1, H, W, D, 20)
+        # Shape: (1, H, W, D, T) where T = sample_duration
         y = torch.from_numpy(sequence).float().unsqueeze(0)
 
         return y
@@ -897,7 +897,7 @@ class ABIDE(BaseDataset):
     def _set_data(self, root, subject_dict):
         """
         Set up data list for ABIDE dataset.
-        Only uses the first 20 frames from the FIRST .npz file of each subject.
+        Only uses the specified number of frames from the FIRST .npz file of each subject.
         Args:
             root: Not used - paths are provided directly in subject_dict
             subject_dict: Dictionary mapping file_path -> [sex, target_label]
@@ -911,7 +911,7 @@ class ABIDE(BaseDataset):
         error_count = 0
         file_not_found_count = 0
 
-        print(f"Processing {total_files} ABIDE files - keeping only first file per subject, first 20 frames...")
+        print(f"Processing {total_files} ABIDE files - keeping only first file per subject...")
 
         # Sort file paths to ensure consistent ordering (block0000 before block0001)
         sorted_file_paths = sorted(subject_dict.keys())

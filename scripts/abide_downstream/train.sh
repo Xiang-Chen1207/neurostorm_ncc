@@ -41,8 +41,8 @@ python /home/chenx/code/neurostorm_ncc/main.py \
   --model neurostorm \
   --depth 2 2 6 2 \
   --embed_dim 36 \
-  --sequence_length 20 \
-  --img_size 96 96 96 20 \
+  --sequence_length 40 \
+  --img_size 96 96 96 40 \
   --first_window_size 4 4 4 4 \
   --window_size 4 4 4 4 \
   --load_model_path /home/chenx/code/neurostorm_ncc/pt_fmrifound_mae_ratio0.5.ckpt \
@@ -50,7 +50,7 @@ python /home/chenx/code/neurostorm_ncc/main.py \
 
 # Notes:
 # - The model will load .npz files directly from the paths specified in the txt files
-# - Only the first 20 frames from the first npz file of each subject are used
+# - Only the first 40 frames from the first npz file of each subject are used
 # - Labels (continuous age values) are extracted from AGE_AT_SCAN column in abide.csv
 # - Subject ID is extracted from directory name (e.g., CMU_a_0050642_func_preproc -> 50642)
 # - Adjust --batch_size based on your GPU memory (default: 2)
