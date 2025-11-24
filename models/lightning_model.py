@@ -510,10 +510,19 @@ class LightningModel(pl.LightningModule):
 
         # regression target is normalized
         elif self.hparams.downstream_task_type == 'regression':
+            # Calculate metrics using NORMALIZED (standardized) values
             mse = F.mse_loss(subj_avg_logits, subj_targets)
             mae = F.l1_loss(subj_avg_logits, subj_targets)
 
-            # reconstruct to original scale
+            # Calculate Pearson correlation coefficient (r) using NORMALIZED values
+            pearson = PearsonCorrCoef().to(total_out_logits.device)
+            pearson_coef = pearson(subj_avg_logits, subj_targets)
+
+            # Calculate R² (coefficient of determination) = r²
+            # R² is computed using NORMALIZED values
+            r_squared = pearson_coef ** 2
+
+            # Also reconstruct to original scale for reference
             if self.hparams.label_scaling_method == 'standardization': # default
                 adjusted_predictions = subj_avg_logits * self.scaler.scale_[0] + self.scaler.mean_[0]
                 adjusted_targets = subj_targets * self.scaler.scale_[0] + self.scaler.mean_[0]
@@ -524,13 +533,14 @@ class LightningModel(pl.LightningModule):
                 adjusted_targets = subj_targets * (self.scaler.data_max_[0] - self.scaler.data_min_[0]) + self.scaler.data_min_[0]
                 adjusted_mse = F.mse_loss(adjusted_predictions, adjusted_targets)
                 adjusted_mae = F.l1_loss(adjusted_predictions, adjusted_targets)
-            pearson = PearsonCorrCoef().to(total_out_logits.device)
-            prearson_coef = pearson(subj_avg_logits, subj_targets)
 
             # Print and save predictions for regression
             if self.trainer.is_global_zero:
                 print(f"\n{'='*80}")
                 print(f"{mode.upper()} Set - Detailed Predictions (Regression)")
+                print(f"{'='*80}")
+                print(f"Note: Metrics below are in ORIGINAL SCALE for interpretability")
+                print(f"      But training and evaluation use NORMALIZED (standardized) values")
                 print(f"{'='*80}")
                 print(f"{'Subject':<50} | {'Predicted':<12} | {'True':<12} | {'Error':<12}")
                 print(f"{'-'*80}")
@@ -539,23 +549,31 @@ class LightningModel(pl.LightningModule):
                 predictions_data = []
 
                 for i, subj in enumerate(subjects):
-                    pred = adjusted_predictions[i].item()
-                    true = adjusted_targets[i].item()
-                    error = abs(pred - true)
+                    # Print original scale values for interpretability
+                    pred_original = adjusted_predictions[i].item()
+                    true_original = adjusted_targets[i].item()
+                    error_original = abs(pred_original - true_original)
 
-                    # Print to console
-                    print(f"{subj:<50} | {pred:<12.4f} | {true:<12.4f} | {error:<12.4f}")
+                    # Print to console (original scale)
+                    print(f"{subj:<50} | {pred_original:<12.4f} | {true_original:<12.4f} | {error_original:<12.4f}")
 
-                    # Collect data for CSV
+                    # Also get normalized values
+                    pred_normalized = subj_avg_logits[i].item()
+                    true_normalized = subj_targets[i].item()
+
+                    # Collect data for CSV (include both scales)
                     predictions_data.append({
                         'subject': subj,
-                        'predicted_value': pred,
-                        'true_value': true,
-                        'absolute_error': error
+                        'predicted_value': pred_original,
+                        'true_value': true_original,
+                        'absolute_error': error_original,
+                        'predicted_normalized': pred_normalized,
+                        'true_normalized': true_normalized
                     })
 
                 print(f"{'-'*80}")
-                print(f"MAE: {adjusted_mae.item():.4f}")
+                print(f"Metrics (Original Scale): MAE={adjusted_mae.item():.4f}, MSE={adjusted_mse.item():.4f}")
+                print(f"Metrics (Normalized):     MAE={mae.item():.4f}, MSE={mse.item():.4f}, R²={r_squared.item():.4f}")
                 print(f"{'='*80}\n")
 
                 # Save predictions to CSV file
@@ -571,9 +589,30 @@ class LightningModel(pl.LightningModule):
                 df.to_csv(csv_filename, index=False)
                 print(f"[INFO] Predictions saved to: {csv_filename}\n")
 
-            self.log(f"{mode}_corrcoef", prearson_coef, sync_dist=True)
+                # Save metrics to a separate CSV file
+                metrics_data = {
+                    'mode': [mode],
+                    'epoch': [self.current_epoch],
+                    'mse_normalized': [mse.item()],
+                    'mae_normalized': [mae.item()],
+                    'r_squared_normalized': [r_squared.item()],
+                    'pearson_coef': [pearson_coef.item()],
+                    'mse_original': [adjusted_mse.item()],
+                    'mae_original': [adjusted_mae.item()],
+                    'num_samples': [len(subjects)]
+                }
+                metrics_df = pd.DataFrame(metrics_data)
+                metrics_filename = os.path.join(predictions_dir, f'metrics_{mode}_epoch{self.current_epoch}.csv')
+                metrics_df.to_csv(metrics_filename, index=False)
+                print(f"[INFO] Metrics saved to: {metrics_filename}")
+                print(f"[INFO] MSE (normalized): {mse.item():.4f}, R² (normalized): {r_squared.item():.4f}\n")
+
+            # Log metrics using NORMALIZED values (used for training/evaluation)
+            self.log(f"{mode}_r_squared", r_squared, sync_dist=True)
+            self.log(f"{mode}_pearson_coef", pearson_coef, sync_dist=True)
             self.log(f"{mode}_mse", mse, sync_dist=True)
             self.log(f"{mode}_mae", mae, sync_dist=True)
+            # Also log original scale metrics for reference
             self.log(f"{mode}_adjusted_mse", adjusted_mse, sync_dist=True)
             self.log(f"{mode}_adjusted_mae", adjusted_mae, sync_dist=True) 
 
