@@ -531,9 +531,9 @@ class fMRIDataModule(pl.LightningDataModule):
             if not os.path.exists(txt_files['train']):
                 # Try the default location provided by the user
                 txt_files = {
-                    'train': '/mnt/dataset4/DATASETS/fsl_fmri/adni_split/adni_ad_mni_train.txt',
-                    'val': '/mnt/dataset4/DATASETS/fsl_fmri/adni_split/adni_ad_mni_val.txt',
-                    'test': '/mnt/dataset4/DATASETS/fsl_fmri/adni_split/adni_ad_mni_test.txt'
+                        'train': os.path.join(self.hparams.image_path, 'adni_ad_mni_train.txt'),
+                        'val': os.path.join(self.hparams.image_path, 'adni_ad_mni_val.txt'),
+                        'test': os.path.join(self.hparams.image_path, 'adni_ad_mni_test.txt')
                 }
 
             # Load file paths from each split SEPARATELY to preserve the split

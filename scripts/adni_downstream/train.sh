@@ -25,7 +25,7 @@ python /home/chenx/code/neurostorm_ncc/main.py \
   --loggername tensorboard \
   --clf_head_version v1 \
   --dataset_name ADNI \
-  --image_path /home/chenx/code/neurostorm_ncc/data \
+  --image_path /home/chenx/code/neurostorm_ncc/data/adni \
   --batch_size "$batch_size" \
   --num_workers 8 \
   --eval_batch_size "$batch_size" \
