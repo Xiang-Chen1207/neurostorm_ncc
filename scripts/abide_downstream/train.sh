@@ -57,5 +57,6 @@ python /home/chenx/code/neurostorm_ncc/main.py \
 # - Adjust CUDA_VISIBLE_DEVICES based on available GPUs
 # - Pre-trained model path: /home/user/neurostorm_ncc/pt_fmrifound_mae_ratio0.5.ckpt
 # - Output will include predictions CSV with predicted and true age values
-# - Metrics CSV will include Pearson correlation (R²) and MSE
+# - Metrics CSV will include R² (calculated using proper formula: 1 - SS_res/SS_tot), Pearson correlation, MAE, and MSE
+# - All metrics are computed using normalized (standardized) labels and predictions
 # - This is an age regression task

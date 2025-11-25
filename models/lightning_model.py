@@ -518,9 +518,12 @@ class LightningModel(pl.LightningModule):
             pearson = PearsonCorrCoef().to(total_out_logits.device)
             pearson_coef = pearson(subj_avg_logits, subj_targets)
 
-            # Calculate R² (coefficient of determination) = r²
-            # R² is computed using NORMALIZED values
-            r_squared = pearson_coef ** 2
+            # Calculate R² (coefficient of determination) using proper formula
+            # R² = 1 - SS_res / SS_tot, computed using NORMALIZED values
+            # SS_res: residual sum of squares, SS_tot: total sum of squares
+            ss_res = torch.sum((subj_targets - subj_avg_logits) ** 2)
+            ss_tot = torch.sum((subj_targets - torch.mean(subj_targets)) ** 2)
+            r_squared = 1 - (ss_res / ss_tot)
 
             # Also reconstruct to original scale for reference
             if self.hparams.label_scaling_method == 'standardization': # default
