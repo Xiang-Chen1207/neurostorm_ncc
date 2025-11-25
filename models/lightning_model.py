@@ -302,6 +302,12 @@ class LightningModel(pl.LightningModule):
         return merged_subjects, merged_logits, merged_targets
 
     def _evaluate_metrics(self, subj_array, total_out_logits, total_out_target, mode):
+        # Handle empty arrays (can happen in DDP mode or when datasets are small)
+        if len(subj_array) == 0 or len(total_out_logits) == 0:
+            if self.trainer.is_global_zero:
+                print(f"[WARNING] Skipping {mode} metrics - no data available (subj_array: {len(subj_array)}, logits: {len(total_out_logits)})")
+            return
+
         subjects = np.unique(subj_array)
 
         subj_avg_logits = []
@@ -666,12 +672,35 @@ class LightningModel(pl.LightningModule):
                 subj_test += subj
                 out_test_logits_list.append(out[0])
                 out_test_target_list.append(out[1])
-            subj_valid = np.array(subj_valid)
-            subj_test = np.array(subj_test)
-            total_out_valid_logits = torch.cat(out_valid_logits_list, dim=0)
-            total_out_valid_target = torch.cat(out_valid_target_list, dim=0)
-            total_out_test_logits = torch.cat(out_test_logits_list, dim=0)
-            total_out_test_target = torch.cat(out_test_target_list, dim=0)
+
+            # Check if validation or test outputs are empty before concatenation
+            # This can happen in DDP mode when data is not evenly distributed across GPUs
+            if len(out_valid_logits_list) == 0:
+                print(f"[WARNING] Validation logits list is empty at epoch {self.current_epoch}")
+                # Skip validation metrics if no validation data
+                if len(out_test_logits_list) == 0:
+                    print(f"[WARNING] Test logits list is also empty. Skipping all metrics.")
+                    return
+                # If only validation is empty but test has data, we should still process test
+                # Create empty arrays for validation to avoid errors
+                subj_valid = np.array([])
+                total_out_valid_logits = torch.tensor([]).to(out_test_logits_list[0].device if len(out_test_logits_list) > 0 else 'cpu')
+                total_out_valid_target = torch.tensor([]).to(out_test_logits_list[0].device if len(out_test_logits_list) > 0 else 'cpu')
+            else:
+                subj_valid = np.array(subj_valid)
+                total_out_valid_logits = torch.cat(out_valid_logits_list, dim=0)
+                total_out_valid_target = torch.cat(out_valid_target_list, dim=0)
+
+            if len(out_test_logits_list) == 0:
+                print(f"[WARNING] Test logits list is empty at epoch {self.current_epoch}")
+                # If only test is empty but validation has data, create empty arrays for test
+                subj_test = np.array([])
+                total_out_test_logits = torch.tensor([]).to(out_valid_logits_list[0].device if len(out_valid_logits_list) > 0 else 'cpu')
+                total_out_test_target = torch.tensor([]).to(out_valid_logits_list[0].device if len(out_valid_logits_list) > 0 else 'cpu')
+            else:
+                subj_test = np.array(subj_test)
+                total_out_test_logits = torch.cat(out_test_logits_list, dim=0)
+                total_out_test_target = torch.cat(out_test_target_list, dim=0)
 
             # Gather predictions from all GPUs in DDP mode
             if 'ddp' in self.hparams.strategy:
