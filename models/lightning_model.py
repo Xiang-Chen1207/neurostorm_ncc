@@ -323,20 +323,29 @@ class LightningModel(pl.LightningModule):
             # self.log(f"{mode}_AUROC", auroc, sync_dist=True)
             return
 
-        if self.hparams.num_classes == 2:
+        # Compute subject-level averages based on task type
+        if self.hparams.downstream_task_type == 'regression':
+            # For regression: average predictions and get labels for each subject
             for subj in subjects:
                 subj_logits = total_out_logits[subj_array == subj]
                 subj_avg_logits.append(torch.mean(subj_logits).item())
                 subj_targets.append(total_out_target[subj_array == subj][0].item())
-            subj_avg_logits = torch.tensor(subj_avg_logits, device = total_out_logits.device) 
-            subj_targets = torch.tensor(subj_targets, device = total_out_target.device) 
+            subj_avg_logits = torch.tensor(subj_avg_logits, device = total_out_logits.device)
+            subj_targets = torch.tensor(subj_targets, device = total_out_target.device)
+        elif self.hparams.num_classes == 2:
+            for subj in subjects:
+                subj_logits = total_out_logits[subj_array == subj]
+                subj_avg_logits.append(torch.mean(subj_logits).item())
+                subj_targets.append(total_out_target[subj_array == subj][0].item())
+            subj_avg_logits = torch.tensor(subj_avg_logits, device = total_out_logits.device)
+            subj_targets = torch.tensor(subj_targets, device = total_out_target.device)
         elif self.hparams.num_classes > 2:
             for subj in subjects:
                 subj_logits = total_out_logits[subj_array == subj]
                 subj_avg_logits.append(torch.mean(subj_logits, dim=0))
                 subj_targets.append(total_out_target[subj_array == subj][0].item())
-            subj_avg_logits = torch.stack(subj_avg_logits) 
-            subj_targets = torch.tensor(subj_targets, device = total_out_target.device) 
+            subj_avg_logits = torch.stack(subj_avg_logits)
+            subj_targets = torch.tensor(subj_targets, device = total_out_target.device)
 
         if self.hparams.downstream_task_type == 'classification' or self.hparams.scalability_check:
             if self.hparams.num_classes == 2:
@@ -542,6 +551,7 @@ class LightningModel(pl.LightningModule):
                 print(f"\n{'='*80}")
                 print(f"{mode.upper()} Set - Detailed Predictions (Regression)")
                 print(f"{'='*80}")
+                print(f"Total samples: {len(total_out_logits)} | Unique subjects: {len(subjects)}")
                 print(f"Note: Metrics below are in ORIGINAL SCALE for interpretability")
                 print(f"      But training and evaluation use NORMALIZED (standardized) values")
                 print(f"{'='*80}")
@@ -665,6 +675,9 @@ class LightningModel(pl.LightningModule):
 
             # Gather predictions from all GPUs in DDP mode
             if 'ddp' in self.hparams.strategy:
+                if self.trainer.is_global_zero:
+                    print(f"\n[DDP] Before gathering - Rank 0 has {len(subj_test)} test samples from {len(np.unique(subj_test))} unique subjects")
+
                 # Gather validation data
                 subj_valid, total_out_valid_logits, total_out_valid_target = self._gather_predictions_ddp(
                     subj_valid, total_out_valid_logits, total_out_valid_target
@@ -673,6 +686,10 @@ class LightningModel(pl.LightningModule):
                 subj_test, total_out_test_logits, total_out_test_target = self._gather_predictions_ddp(
                     subj_test, total_out_test_logits, total_out_test_target
                 )
+
+                if self.trainer.is_global_zero:
+                    print(f"[DDP] After gathering - Total {len(subj_test)} test samples from {len(np.unique(subj_test))} unique subjects")
+                    print(f"[DDP] World size: {torch.distributed.get_world_size()}\n")
 
             # evaluate
             self._evaluate_metrics(subj_valid, total_out_valid_logits, total_out_valid_target, mode="valid")
