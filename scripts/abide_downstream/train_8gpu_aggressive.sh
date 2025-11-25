@@ -93,7 +93,8 @@ python /home/chenx/code/neurostorm_ncc/main.py \
   --first_window_size 4 4 4 4 \
   --window_size 4 4 4 4 \
   --load_model_path /home/chenx/code/neurostorm_ncc/pt_fmrifound_mae_ratio0.5.ckpt \
-  --num_sanity_val_steps 0
+  --num_sanity_val_steps 0 \
+  --eval_train_every 5
 
 # =============================================================================
 # NOTES FOR AGGRESSIVE CONFIGURATION
