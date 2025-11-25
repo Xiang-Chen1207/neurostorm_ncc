@@ -694,7 +694,77 @@ class LightningModel(pl.LightningModule):
             # evaluate
             self._evaluate_metrics(subj_valid, total_out_valid_logits, total_out_valid_target, mode="valid")
             self._evaluate_metrics(subj_test, total_out_test_logits, total_out_test_target, mode="test")
-            
+
+            # Evaluate training set performance to detect overfitting
+            # Only evaluate every N epochs to save computation time
+            eval_train_every = getattr(self.hparams, 'eval_train_every', 5)
+            if (self.current_epoch + 1) % eval_train_every == 0 or self.current_epoch == 0:
+                self._evaluate_train_set()
+
+    def _evaluate_train_set(self):
+        """
+        Evaluate model performance on training set to detect overfitting.
+        This method runs inference on the entire training set and computes metrics.
+        """
+        if self.hparams.pretraining:
+            return  # Skip for pretraining tasks
+
+        if self.trainer.is_global_zero:
+            print(f"\n[TRAIN EVAL] Evaluating training set at epoch {self.current_epoch}...")
+
+        # Set model to eval mode
+        self.model.eval()
+        if hasattr(self, 'output_head'):
+            self.output_head.eval()
+
+        train_loader = self.trainer.datamodule.train_dataloader()
+
+        subj_train = []
+        out_train_logits_list, out_train_target_list = [], []
+
+        with torch.no_grad():
+            for batch_idx, batch in enumerate(train_loader):
+                # Move batch to device
+                if isinstance(batch, dict):
+                    batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v
+                            for k, v in batch.items()}
+
+                # Get predictions
+                subj, logits, target = self._compute_logits(batch)
+
+                # Collect outputs
+                subj_train += subj
+                out_train_logits_list.append(logits.squeeze().detach().cpu())
+                out_train_target_list.append(target.squeeze().detach().cpu())
+
+        # Concatenate all batches
+        subj_train = np.array(subj_train)
+        total_out_train_logits = torch.cat(out_train_logits_list, dim=0)
+        total_out_train_target = torch.cat(out_train_target_list, dim=0)
+
+        # Gather predictions from all GPUs in DDP mode
+        if 'ddp' in self.hparams.strategy:
+            if self.trainer.is_global_zero:
+                print(f"[DDP] Before gathering - Rank 0 has {len(subj_train)} train samples from {len(np.unique(subj_train))} unique subjects")
+
+            subj_train, total_out_train_logits, total_out_train_target = self._gather_predictions_ddp(
+                subj_train, total_out_train_logits, total_out_train_target
+            )
+
+            if self.trainer.is_global_zero:
+                print(f"[DDP] After gathering - Total {len(subj_train)} train samples from {len(np.unique(subj_train))} unique subjects\n")
+
+        # Evaluate metrics on training set
+        self._evaluate_metrics(subj_train, total_out_train_logits, total_out_train_target, mode="train")
+
+        # Set model back to train mode
+        self.model.train()
+        if hasattr(self, 'output_head'):
+            self.output_head.train()
+
+        if self.trainer.is_global_zero:
+            print(f"[TRAIN EVAL] Completed training set evaluation\n")
+
     # If you use loggers other than Neptune you may need to modify this
     def _save_predictions(self,total_subjs,total_out, mode):
         self.subject_accuracy = {}
@@ -896,5 +966,6 @@ class LightningModel(pl.LightningModule):
         # others
         group.add_argument("--scalability_check", action='store_true', help="whether to check scalability")
         group.add_argument("--process_code", default=None, help="Slurm code/PBS code. Use this argument if you want to save process codes to your log")
-        
+        group.add_argument("--eval_train_every", type=int, default=5, help="Evaluate training set every N epochs to monitor overfitting (default: 5, set to 1 for every epoch)")
+
         return parser
