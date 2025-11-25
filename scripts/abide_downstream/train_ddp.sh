@@ -1,9 +1,9 @@
 #!/bin/bash
-# Fine-tuning NeuroSTORM on ABIDE dataset for age regression
-# Usage: bash scripts/abide_downstream/train.sh [batch_size]
+# Fine-tuning NeuroSTORM on ABIDE dataset for age regression (DDP version with 2 GPUs)
+# Usage: bash scripts/abide_downstream/train_ddp.sh [batch_size]
 
-# Set default batch_size
-batch_size="2"
+# Set default batch_size - increase for better GPU utilization with DDP
+batch_size="4"
 
 # Override with the arguments if provided
 if [ ! -z "$1" ]; then
@@ -11,18 +11,18 @@ if [ ! -z "$1" ]; then
 fi
 
 # Set CUDA devices (modify as needed)
-# Using single GPU to avoid DDP issues with small validation set
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=0,1
 export NCCL_P2P_DISABLE=1
 
 # Construct project_name
-project_name="abide_ft_neurostorm_age_regression"
+project_name="abide_ft_neurostorm_age_regression_ddp"
 
 python /home/chenx/code/neurostorm_ncc/main.py \
   --accelerator gpu \
-  --devices 1 \
+  --devices 2 \
   --max_epochs 10 \
   --num_nodes 1 \
+  --strategy ddp \
   --loggername tensorboard \
   --clf_head_version v1 \
   --dataset_name ABIDE \
@@ -49,14 +49,10 @@ python /home/chenx/code/neurostorm_ncc/main.py \
   --load_model_path /home/chenx/code/neurostorm_ncc/pt_fmrifound_mae_ratio0.5.ckpt \
   --num_sanity_val_steps 0
 
-# Notes:
-# - The model will load .npz files directly from the paths specified in the txt files
-# - Only the first 20 frames from the first npz file of each subject are used
-# - Labels (continuous age values) are extracted from AGE_AT_SCAN column in abide.csv
-# - Subject ID is extracted from directory name (e.g., CMU_a_0050642_func_preproc -> 50642)
-# - Adjust --batch_size based on your GPU memory (default: 2)
-# - Adjust CUDA_VISIBLE_DEVICES based on available GPUs
-# - Pre-trained model path: /home/user/neurostorm_ncc/pt_fmrifound_mae_ratio0.5.ckpt
-# - Output will include predictions CSV with predicted and true age values
-# - Metrics CSV will include Pearson correlation (R²) and MSE
-# - This is an age regression task
+# Notes for DDP version:
+# - Uses 2 GPUs for distributed training
+# - Increased default batch_size to 4 for better GPU utilization
+# - Validation set: 88 samples / 2 GPUs = 44 samples per GPU
+# - Test set: 176 samples / 2 GPUs = 88 samples per GPU
+# - With batch_size=4: validation needs 11 batches per GPU, test needs 22 batches
+# - The empty tensor check in lightning_model.py will handle edge cases
