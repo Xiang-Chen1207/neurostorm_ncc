@@ -681,11 +681,13 @@ class fMRIDataModule(pl.LightningDataModule):
 
             - abide_val.txt: Plain text file, one npz file path per line (no headers)
 
-            - abide.csv: CSV file with SUB_ID and AGE_AT_SCAN columns
+            - abide.csv: CSV file with SUB_ID, AGE_AT_SCAN, and age_group columns
 
- 
 
-            Labels (age values) are extracted from abide.csv based on subject ID.
+
+            Labels are extracted from abide.csv based on subject ID.
+            For age group classification: use age_group (0,1,2,3)
+            For age regression: use AGE_AT_SCAN
             """
             # Load txt files with npz file paths (they have CSV headers)
             txt_files = {
@@ -700,18 +702,26 @@ class fMRIDataModule(pl.LightningDataModule):
                 raise FileNotFoundError(f"ABIDE CSV file not found: {csv_file}")
 
             meta_data = pd.read_csv(csv_file)
-            # Create a dictionary mapping subject ID to age value
+            # Create a dictionary mapping subject ID to label (age group or age value)
             subject_label_dict = {}
             for _, row in meta_data.iterrows():
                 # Convert to int first to remove .0 suffix, then to string
                 subject_id = str(int(row['SUB_ID']))
 
-                # Use AGE_AT_SCAN for regression task (continuous age value)
-                age = float(row['AGE_AT_SCAN'])
+                # Choose label based on task type
+                if self.hparams.task_name == 'age_group':
+                    # Use age_group for classification task (discrete labels: 0,1,2,3)
+                    label = int(row['age_group'])
+                else:
+                    # Use AGE_AT_SCAN for regression task (continuous age value)
+                    label = float(row['AGE_AT_SCAN'])
 
-                subject_label_dict[subject_id] = age
+                subject_label_dict[subject_id] = label
 
-            print(f"Loaded age values for {len(subject_label_dict)} subjects from CSV")
+            if self.hparams.task_name == 'age_group':
+                print(f"Loaded age group labels for {len(subject_label_dict)} subjects from CSV (4-class classification)")
+            else:
+                print(f"Loaded age values for {len(subject_label_dict)} subjects from CSV (regression)")
 
             # Load file paths from each split SEPARATELY
             split_file_paths = {'train': [], 'val': [], 'test': []}
@@ -748,15 +758,15 @@ class fMRIDataModule(pl.LightningDataModule):
                         subject_id = str(int(part))
                         break
 
-                # Look up age from CSV
+                # Look up label from CSV
                 if subject_id and subject_id in subject_label_dict:
-                    age = subject_label_dict[subject_id]
+                    label = subject_label_dict[subject_id]
                     sex = 0  # Not using sex for this task
 
                     # Use file path as the key (unique identifier)
-                    final_dict[file_path] = [sex, age]
+                    final_dict[file_path] = [sex, label]
                     matched_subjects += 1
-                    age_values.append(age)
+                    age_values.append(label)
                 else:
                     if subject_id:
                         unmatched_subjects.add(subject_id)
@@ -769,10 +779,19 @@ class fMRIDataModule(pl.LightningDataModule):
             print(f'\nLoad dataset ABIDE, {len(final_dict)} files from {matched_subjects} matched subjects')
 
             if len(age_values) > 0:
-                print(f"  - Age range: {age_values.min():.2f} - {age_values.max():.2f} years")
-                print(f"  - Age mean ± std: {age_values.mean():.2f} ± {age_values.std():.2f} years")
+                if self.hparams.task_name == 'age_group':
+                    # For classification, show class distribution
+                    from collections import Counter
+                    class_counts = Counter(age_values)
+                    print(f"  - Age group distribution:")
+                    for age_group in sorted(class_counts.keys()):
+                        print(f"    Group {int(age_group)}: {class_counts[age_group]} files")
+                else:
+                    # For regression, show age statistics
+                    print(f"  - Age range: {age_values.min():.2f} - {age_values.max():.2f} years")
+                    print(f"  - Age mean ± std: {age_values.mean():.2f} ± {age_values.std():.2f} years")
             else:
-                print("  - WARNING: No age values found! Check if:")
+                print("  - WARNING: No labels found! Check if:")
                 print("    1. File paths in txt files match the expected format")
                 print("    2. Subject IDs can be extracted from directory names")
                 print("    3. Subject IDs in file paths match those in CSV")
