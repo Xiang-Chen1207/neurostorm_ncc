@@ -127,7 +127,11 @@ class LightningModel(pl.LightningModule):
 
         # Classification task
         if self.hparams.downstream_task_type == 'classification' or self.hparams.scalability_check:
-            logits = self.output_head(feature).squeeze() #self.clf(feature).squeeze()
+            logits = self.output_head(feature)  #self.clf(feature)
+            # Only squeeze for binary classification (num_classes=2)
+            # For multi-class (num_classes>2), keep shape (batch, num_classes)
+            if self.hparams.num_classes == 2:
+                logits = logits.squeeze()
             target = target_value.float().squeeze()
         # Regression task
         elif self.hparams.downstream_task_type == 'regression':
@@ -646,8 +650,13 @@ class LightningModel(pl.LightningModule):
                 output = torch.stack([logits[1].squeeze(), target], dim=1)
                 output = output.detach().cpu()
             else:
-                output = [logits.squeeze().detach().cpu(), target.squeeze().detach().cpu()]
-            
+                # For binary classification, logits is already squeezed in _compute_logits
+                # For multi-class, logits has shape (batch, num_classes), so don't squeeze
+                if self.hparams.num_classes > 2:
+                    output = [logits.detach().cpu(), target.squeeze().detach().cpu()]
+                else:
+                    output = [logits.squeeze().detach().cpu(), target.squeeze().detach().cpu()]
+
             return (subj, output)
 
     def validation_epoch_end(self, outputs):
@@ -734,7 +743,12 @@ class LightningModel(pl.LightningModule):
 
                 # Collect outputs
                 subj_train += subj
-                out_train_logits_list.append(logits.squeeze().detach().cpu())
+                # For binary classification, logits is already squeezed in _compute_logits
+                # For multi-class, logits has shape (batch, num_classes), so don't squeeze
+                if self.hparams.num_classes > 2:
+                    out_train_logits_list.append(logits.detach().cpu())
+                else:
+                    out_train_logits_list.append(logits.squeeze().detach().cpu())
                 out_train_target_list.append(target.squeeze().detach().cpu())
 
         # Concatenate all batches
@@ -816,7 +830,12 @@ class LightningModel(pl.LightningModule):
             self._calculate_loss(batch, mode="test")
         else:
             subj, logits, target = self._compute_logits(batch)
-            output = [logits.squeeze().detach().cpu(), target.squeeze().detach().cpu()]
+            # For binary classification, logits is already squeezed in _compute_logits
+            # For multi-class, logits has shape (batch, num_classes), so don't squeeze
+            if self.hparams.num_classes > 2:
+                output = [logits.detach().cpu(), target.squeeze().detach().cpu()]
+            else:
+                output = [logits.squeeze().detach().cpu(), target.squeeze().detach().cpu()]
 
             return (subj, output)
 
