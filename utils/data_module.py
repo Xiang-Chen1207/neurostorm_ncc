@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 import numpy as np
 import pandas as pd
 from torch.utils.data import DataLoader, Subset
-from datasets.fmri_datasets import HCP1200, ABCD, UKB, Cobre, ADHD200, UCLA, HCPEP, HCPTASK, GOD, MOVIE, TransDiag, ADNI, HCP, ABIDE
+from datasets.fmri_datasets import HCP1200, ABCD, UKB, Cobre, ADHD200, UCLA, HCPEP, HCPTASK, GOD, MOVIE, TransDiag, ADNI, ADNI_MCI, HCP, ABIDE
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from .parser import str2bool
 
@@ -76,6 +76,8 @@ class fMRIDataModule(pl.LightningDataModule):
             return TransDiag
         elif self.hparams.dataset_name == 'ADNI':
             return ADNI
+        elif self.hparams.dataset_name == 'ADNI_MCI':
+            return ADNI_MCI
         elif self.hparams.dataset_name == 'HCP':
             return HCP
         elif self.hparams.dataset_name == 'ABIDE':
@@ -584,6 +586,73 @@ class fMRIDataModule(pl.LightningDataModule):
             print(f"  - Val: {len(split_file_paths['val'])} files")
             print(f"  - Test: {len(split_file_paths['test'])} files")
 
+        elif self.hparams.dataset_name == "ADNI_MCI":
+            """
+            ADNI-MCI dataset loading from txt files containing file paths.
+            Expected structure:
+            - adni_mci_mni_train.txt: paths to training .npz files
+            - adni_mci_mni_test.txt: paths to test .npz files
+            - adni_mci_mni_val.txt: paths to validation .npz files
+
+            Labels are extracted from file paths (containing 'mci' or 'cn').
+            """
+            # The image_path should point to the directory containing the txt files
+            txt_files = {
+                'train': os.path.join(self.hparams.image_path, 'adni_mci_mni_train.txt'),
+                'val': os.path.join(self.hparams.image_path, 'adni_mci_mni_val.txt'),
+                'test': os.path.join(self.hparams.image_path, 'adni_mci_mni_test.txt')
+            }
+
+            # Check if txt files exist
+            for split_name, txt_file in txt_files.items():
+                if not os.path.exists(txt_file):
+                    raise FileNotFoundError(f"ADNI-MCI txt file not found: {txt_file}")
+
+            # Load file paths from each split SEPARATELY to preserve the split
+            split_file_paths = {'train': [], 'val': [], 'test': []}
+            for split_name, txt_file in txt_files.items():
+                with open(txt_file, 'r') as f:
+                    paths = [line.strip() for line in f.readlines() if line.strip()]
+                    split_file_paths[split_name] = paths
+
+            # Extract labels from file paths and maintain split information
+            for file_path in split_file_paths['train'] + split_file_paths['val'] + split_file_paths['test']:
+                # Extract label from path
+                # The path contains '/mci/' or '/cn/' indicating the class
+                path_lower = file_path.lower()
+
+                if '/mci/' in path_lower or '_mci_' in path_lower:
+                    target = 1  # MCI (Mild Cognitive Impairment)
+                elif '/cn/' in path_lower or '_cn_' in path_lower:
+                    target = 0  # CN (Cognitively Normal)
+                else:
+                    print(f"Warning: Could not extract label from path: {file_path}")
+                    continue
+
+                # Use file path as the key (unique identifier)
+                # Sex is set to 0 as it's not needed for this task
+                sex = 0
+                final_dict[file_path] = [sex, target]
+
+            # Store the predefined split information
+            # This will be used instead of random splitting
+            self.adni_mci_split_file_paths = split_file_paths
+
+            # Print statistics
+            target_counts = defaultdict(int)
+            for file_path, (sex, target) in final_dict.items():
+                target_counts[target] += 1
+
+            print('Load dataset ADNI-MCI, {} subjects'.format(len(final_dict)))
+            print(f"  - MCI (label=1): {target_counts[1]} files")
+            print(f"  - CN (label=0): {target_counts[0]} files")
+
+            # Print split statistics
+            print(f"\nPredefined split from txt files:")
+            print(f"  - Train: {len(split_file_paths['train'])} files")
+            print(f"  - Val: {len(split_file_paths['val'])} files")
+            print(f"  - Test: {len(split_file_paths['test'])} files")
+
         elif self.hparams.dataset_name == "HCP":
             """
             HCP dataset loading from txt files containing npz file paths.
@@ -835,6 +904,12 @@ class fMRIDataModule(pl.LightningDataModule):
             train_names = self.adni_split_file_paths['train']
             val_names = self.adni_split_file_paths['val']
             test_names = self.adni_split_file_paths['test']
+        # For ADNI-MCI dataset, use predefined split from txt files
+        elif self.hparams.dataset_name == "ADNI_MCI" and hasattr(self, 'adni_mci_split_file_paths'):
+            print("\n[INFO] Using predefined ADNI-MCI split from txt files (not random split)")
+            train_names = self.adni_mci_split_file_paths['train']
+            val_names = self.adni_mci_split_file_paths['val']
+            test_names = self.adni_mci_split_file_paths['test']
         # For HCP dataset, use predefined split from txt files
         elif self.hparams.dataset_name == "HCP" and hasattr(self, 'hcp_split_file_paths'):
             print("\n[INFO] Using predefined HCP split from txt files (not random split)")
