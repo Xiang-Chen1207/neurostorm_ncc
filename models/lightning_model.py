@@ -361,6 +361,12 @@ class LightningModel(pl.LightningModule):
                 # bal_acc_sk = balanced_accuracy_score(subj_targets.cpu(), (subj_avg_logits>=0).int().cpu())
                 auroc = auroc_func(torch.sigmoid(subj_avg_logits), subj_targets)
 
+                # Calculate F1-weighted for binary classification (needed for all processes)
+                pred_labels = predictions.cpu().numpy()
+                true_labels = subj_targets.cpu().numpy()
+                acc_score = accuracy_score(true_labels, pred_labels)
+                f1_weighted = f1_score(true_labels, pred_labels, average='weighted')
+
                 # Print and save predictions for binary classification
                 if self.trainer.is_global_zero:
                     print(f"\n{'='*80}")
@@ -414,13 +420,7 @@ class LightningModel(pl.LightningModule):
                     df.to_csv(csv_filename, index=False)
                     print(f"[INFO] Predictions saved to: {csv_filename}\n")
 
-                    # Calculate and save metrics (ACC and F1-weight)
-                    pred_labels = predictions.cpu().numpy()
-                    true_labels = subj_targets.cpu().numpy()
-                    acc_score = accuracy_score(true_labels, pred_labels)
-                    f1_weighted = f1_score(true_labels, pred_labels, average='weighted')
-
-                    # Save metrics to a separate CSV file
+                    # Save metrics to a separate CSV file (using already computed acc_score and f1_weighted)
                     metrics_data = {
                         'mode': [mode],
                         'epoch': [self.current_epoch],
@@ -434,6 +434,9 @@ class LightningModel(pl.LightningModule):
                     print(f"[INFO] Metrics - ACC: {acc_score:.4f}, F1-weighted: {f1_weighted:.4f}")
                     print(f"[INFO] Metrics saved to: {metrics_filename}\n")
 
+                # Log F1-weighted for binary classification
+                self.log(f"{mode}_f1_weighted", f1_weighted, sync_dist=True)
+
             elif self.hparams.num_classes > 2:
                 auroc_func = MulticlassAUROC(num_classes=self.hparams.num_classes).to(total_out_logits.device)
                 predictions = subj_avg_logits.max(dim=1)[1]
@@ -441,6 +444,12 @@ class LightningModel(pl.LightningModule):
                 acc3 = acc3_func(subj_avg_logits, subj_targets.long())
                 # bal_acc_sk = balanced_accuracy_score(subj_targets.cpu(), subj_avg_logits.max(dim=1)[1].int().cpu())
                 auroc = auroc_func(subj_avg_logits, subj_targets.long())
+
+                # Calculate F1-weighted for multi-class classification (needed for all processes)
+                pred_labels = predictions.cpu().numpy()
+                true_labels = subj_targets.cpu().numpy()
+                acc_score = accuracy_score(true_labels, pred_labels)
+                f1_weighted = f1_score(true_labels, pred_labels, average='weighted')
 
                 # Print and save predictions for multi-class classification
                 if self.trainer.is_global_zero:
@@ -491,13 +500,7 @@ class LightningModel(pl.LightningModule):
                     df.to_csv(csv_filename, index=False)
                     print(f"[INFO] Predictions saved to: {csv_filename}\n")
 
-                    # Calculate and save metrics (ACC and F1-weight)
-                    pred_labels = predictions.cpu().numpy()
-                    true_labels = subj_targets.cpu().numpy()
-                    acc_score = accuracy_score(true_labels, pred_labels)
-                    f1_weighted = f1_score(true_labels, pred_labels, average='weighted')
-
-                    # Save metrics to a separate CSV file
+                    # Save metrics to a separate CSV file (using already computed acc_score and f1_weighted)
                     metrics_data = {
                         'mode': [mode],
                         'epoch': [self.current_epoch],
@@ -511,7 +514,9 @@ class LightningModel(pl.LightningModule):
                     print(f"[INFO] Metrics - ACC: {acc_score:.4f}, F1-weighted: {f1_weighted:.4f}")
                     print(f"[INFO] Metrics saved to: {metrics_filename}\n")
 
+                # Log metrics for multi-class classification
                 self.log(f"{mode}_acc3", acc3, sync_dist=True)
+                self.log(f"{mode}_f1_weighted", f1_weighted, sync_dist=True)
 
             self.log(f"{mode}_acc", acc, sync_dist=True)
             # self.log(f"{mode}_balacc", bal_acc_sk, sync_dist=True)
