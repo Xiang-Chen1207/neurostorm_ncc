@@ -11,7 +11,7 @@ if [ ! -z "$1" ]; then
 fi
 
 # Set CUDA devices (modify as needed)
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=0,1,2,3,4
 export NCCL_P2P_DISABLE=1
 
 # Construct project_name
@@ -19,7 +19,7 @@ project_name="abide_ft_neurostorm_age_regression"
 
 python /home/chenx/code/neurostorm_ncc/main.py \
   --accelerator gpu \
-  --max_epochs 10 \
+  --max_epochs 20 \
   --num_nodes 1 \
   --strategy ddp \
   --loggername tensorboard \
@@ -27,7 +27,7 @@ python /home/chenx/code/neurostorm_ncc/main.py \
   --dataset_name ABIDE \
   --image_path /home/chenx/code/neurostorm_ncc/data/abide \
   --batch_size "$batch_size" \
-  --num_workers 8 \
+  --num_workers 16 \
   --eval_batch_size "$batch_size" \
   --project_name "$project_name" \
   --c_multiplier 2 \
@@ -36,6 +36,8 @@ python /home/chenx/code/neurostorm_ncc/main.py \
   --downstream_task_type "regression" \
   --task_name "age" \
   --dataset_split_num 1 \
+  --optimizer AdamW \
+  --weight_decay 0.01 \
   --seed 1234 \
   --learning_rate 5e-5 \
   --model neurostorm \
