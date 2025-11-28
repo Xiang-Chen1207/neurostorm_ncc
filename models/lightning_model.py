@@ -711,8 +711,9 @@ class LightningModel(pl.LightningModule):
 
             # Evaluate training set performance to detect overfitting
             # Only evaluate every N epochs to save computation time
+            # Skip epoch 0 to avoid long delays at the start of training
             eval_train_every = getattr(self.hparams, 'eval_train_every', 5)
-            if (self.current_epoch + 1) % eval_train_every == 0 or self.current_epoch == 0:
+            if (self.current_epoch + 1) % eval_train_every == 0 and self.current_epoch > 0:
                 self._evaluate_train_set()
 
     def _evaluate_train_set(self):
@@ -723,21 +724,42 @@ class LightningModel(pl.LightningModule):
         if self.hparams.pretraining:
             return  # Skip for pretraining tasks
 
+        # Get max number of batches to evaluate (None means evaluate all)
+        max_train_eval_batches = getattr(self.hparams, 'max_train_eval_batches', None)
+
+        train_loader = self.trainer.datamodule.train_dataloader()
+        total_batches = len(train_loader)
+
+        if max_train_eval_batches is not None:
+            eval_batches = min(max_train_eval_batches, total_batches)
+        else:
+            eval_batches = total_batches
+
         if self.trainer.is_global_zero:
             print(f"\n[TRAIN EVAL] Evaluating training set at epoch {self.current_epoch}...")
+            print(f"[TRAIN EVAL] Processing {eval_batches}/{total_batches} batches (batch_size={self.hparams.batch_size})")
+            print(f"[TRAIN EVAL] Estimated samples: ~{eval_batches * self.hparams.batch_size}")
 
         # Set model to eval mode
         self.model.eval()
         if hasattr(self, 'output_head'):
             self.output_head.eval()
 
-        train_loader = self.trainer.datamodule.train_dataloader()
-
         subj_train = []
         out_train_logits_list, out_train_target_list = [], []
 
         with torch.no_grad():
             for batch_idx, batch in enumerate(train_loader):
+                # Stop if we've reached the max number of batches
+                if max_train_eval_batches is not None and batch_idx >= max_train_eval_batches:
+                    if self.trainer.is_global_zero:
+                        print(f"[TRAIN EVAL] Reached max_train_eval_batches limit ({max_train_eval_batches}), stopping evaluation")
+                    break
+
+                # Print progress every 50 batches
+                if self.trainer.is_global_zero and (batch_idx + 1) % 50 == 0:
+                    print(f"[TRAIN EVAL] Progress: {batch_idx + 1}/{eval_batches} batches processed ({100*(batch_idx+1)/eval_batches:.1f}%)")
+
                 # Move batch to device
                 if isinstance(batch, dict):
                     batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v
@@ -991,5 +1013,6 @@ class LightningModel(pl.LightningModule):
         group.add_argument("--scalability_check", action='store_true', help="whether to check scalability")
         group.add_argument("--process_code", default=None, help="Slurm code/PBS code. Use this argument if you want to save process codes to your log")
         group.add_argument("--eval_train_every", type=int, default=5, help="Evaluate training set every N epochs to monitor overfitting (default: 5, set to 1 for every epoch)")
+        group.add_argument("--max_train_eval_batches", type=int, default=None, help="Maximum number of training batches to evaluate (default: None, evaluate all batches). Set to a smaller number (e.g., 100) to speed up training evaluation.")
 
         return parser
