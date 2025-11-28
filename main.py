@@ -192,7 +192,15 @@ def cli_main():
 
     # ------------ run -------------
     if args.test_only:
-        trainer.test(model, datamodule=data_module, ckpt_path=args.test_ckpt_path) # dataloaders=data_module
+        # For testing, use single device to avoid DistributedSampler sample replication
+        # Create a new trainer with devices=1 for accurate testing
+        test_trainer = pl.Trainer(
+            accelerator='gpu' if torch.cuda.is_available() else 'cpu',
+            devices=1,
+            num_nodes=1,
+            logger=logger
+        )
+        test_trainer.test(model, datamodule=data_module, ckpt_path=args.test_ckpt_path)
     else:
         if args.resume_ckpt_path is None:
             # New run
@@ -201,7 +209,15 @@ def cli_main():
             # Resume existing run
             trainer.fit(model, datamodule=data_module, ckpt_path=args.resume_ckpt_path)
 
-        trainer.test(model, dataloaders=data_module)
+        # For testing after training, use single device to avoid DistributedSampler sample replication
+        # Create a new trainer with devices=1 for accurate testing
+        test_trainer = pl.Trainer(
+            accelerator='gpu' if torch.cuda.is_available() else 'cpu',
+            devices=1,
+            num_nodes=1,
+            logger=logger
+        )
+        test_trainer.test(model, dataloaders=data_module)
 
 
 if __name__ == "__main__":
