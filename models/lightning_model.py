@@ -131,8 +131,11 @@ class LightningModel(pl.LightningModule):
             # Only squeeze for binary classification (num_classes=2)
             # For multi-class (num_classes>2), keep shape (batch, num_classes)
             if self.hparams.num_classes == 2:
-                logits = logits.squeeze()
-            target = target_value.float().squeeze()
+                # Use squeeze(-1) to only remove last dimension, preserving batch dimension
+                # This prevents 0D tensors when batch_size=1
+                logits = logits.squeeze(-1)
+            # Use flatten() to ensure at least 1D tensor, preventing 0D tensors
+            target = target_value.float().flatten()
         # Regression task
         elif self.hparams.downstream_task_type == 'regression':
             logits = self.output_head(feature) # (batch,1) or # tuple((batch,1), (batch,1))
@@ -653,9 +656,11 @@ class LightningModel(pl.LightningModule):
                 # For binary classification, logits is already squeezed in _compute_logits
                 # For multi-class, logits has shape (batch, num_classes), so don't squeeze
                 if self.hparams.num_classes > 2:
-                    output = [logits.detach().cpu(), target.squeeze().detach().cpu()]
+                    output = [logits.detach().cpu(), target.flatten().detach().cpu()]
                 else:
-                    output = [logits.squeeze().detach().cpu(), target.squeeze().detach().cpu()]
+                    # Use flatten() instead of squeeze() to ensure at least 1D tensor
+                    # This prevents issues when batch_size=1 which would create 0D tensors
+                    output = [logits.flatten().detach().cpu(), target.flatten().detach().cpu()]
 
             return (subj, output)
 
