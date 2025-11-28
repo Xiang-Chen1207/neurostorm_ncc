@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 import numpy as np
 import pandas as pd
 from torch.utils.data import DataLoader, Subset
-from datasets.fmri_datasets import HCP1200, ABCD, UKB, Cobre, ADHD200, UCLA, HCPEP, HCPTASK, GOD, MOVIE, TransDiag, ADNI, ADNI_MCI, HCP, ABIDE
+from datasets.fmri_datasets import HCP1200, ABCD, UKB, Cobre, ADHD200, UCLA, HCPEP, HCPTASK, GOD, MOVIE, TransDiag, ADNI, ADNI_MCI, ADHD_NEW, HCP, ABIDE
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from .parser import str2bool
 
@@ -78,6 +78,8 @@ class fMRIDataModule(pl.LightningDataModule):
             return ADNI
         elif self.hparams.dataset_name == 'ADNI_MCI':
             return ADNI_MCI
+        elif self.hparams.dataset_name == 'ADHD_NEW':
+            return ADHD_NEW
         elif self.hparams.dataset_name == 'HCP':
             return HCP
         elif self.hparams.dataset_name == 'ABIDE':
@@ -653,6 +655,100 @@ class fMRIDataModule(pl.LightningDataModule):
             print(f"  - Val: {len(split_file_paths['val'])} files")
             print(f"  - Test: {len(split_file_paths['test'])} files")
 
+        elif self.hparams.dataset_name == "ADHD_NEW":
+            """
+            ADHD dataset loading from txt files containing file paths.
+            Expected structure:
+            - adhd_train.txt: paths to training .npz files
+            - adhd_test.txt: paths to test .npz files
+            - adhd_val.txt: paths to validation .npz files
+            - adhd_dx_group.csv: CSV file with Subject, DX, DX_GROUP columns
+
+            Labels are extracted from adhd_dx_group.csv based on subject ID.
+            """
+            # Load txt files with npz file paths
+            txt_files = {
+                'train': os.path.join(self.hparams.image_path, 'adhd_train.txt'),
+                'val': os.path.join(self.hparams.image_path, 'adhd_val.txt'),
+                'test': os.path.join(self.hparams.image_path, 'adhd_test.txt')
+            }
+
+            # Check if txt files exist
+            for split_name, txt_file in txt_files.items():
+                if not os.path.exists(txt_file):
+                    raise FileNotFoundError(f"ADHD txt file not found: {txt_file}")
+
+            # Load CSV file with labels
+            csv_file = os.path.join(self.hparams.image_path, 'adhd_dx_group.csv')
+            if not os.path.exists(csv_file):
+                raise FileNotFoundError(f"ADHD CSV file not found: {csv_file}")
+
+            meta_data = pd.read_csv(csv_file)
+            # Create a dictionary mapping subject ID to DX_GROUP (0=Control, 1=ADHD)
+            subject_label_dict = {}
+            for _, row in meta_data.iterrows():
+                subject_id = str(int(row['Subject']))  # Convert to string for matching
+                dx_group = int(row['DX_GROUP'])  # 0 or 1
+                subject_label_dict[subject_id] = dx_group
+
+            print(f"Loaded DX_GROUP labels for {len(subject_label_dict)} subjects from CSV")
+
+            # Load file paths from each split SEPARATELY to preserve the split
+            split_file_paths = {'train': [], 'val': [], 'test': []}
+            for split_name, txt_file in txt_files.items():
+                if os.path.exists(txt_file):
+                    with open(txt_file, 'r') as f:
+                        paths = [line.strip() for line in f.readlines() if line.strip()]
+                        split_file_paths[split_name] = paths
+                    print(f"Loaded {len(split_file_paths[split_name])} paths from {split_name} split")
+                else:
+                    print(f"Warning: {txt_file} not found, skipping...")
+
+            # Extract labels from CSV based on subject ID in file path
+            matched_subjects = 0
+            unmatched_subjects = set()
+
+            for file_path in split_file_paths['train'] + split_file_paths['val'] + split_file_paths['test']:
+                # Extract subject ID from filename
+                # Example: "0010001_run-1_0000-0199_1.npz" -> "0010001"
+                filename = os.path.basename(file_path)
+                subject_id = filename.split('_')[0]
+
+                # Look up DX_GROUP from CSV
+                if subject_id in subject_label_dict:
+                    dx_group = subject_label_dict[subject_id]
+                    target = dx_group  # 0=Control, 1=ADHD
+                    sex = 0  # Not using sex for this task
+
+                    # Use file path as the key (unique identifier)
+                    final_dict[file_path] = [sex, target]
+                    matched_subjects += 1
+                else:
+                    unmatched_subjects.add(subject_id)
+
+            # Store the predefined split information
+            self.adhd_new_split_file_paths = split_file_paths
+
+            # Print statistics
+            target_counts = defaultdict(int)
+            for file_path, (sex, target) in final_dict.items():
+                target_counts[target] += 1
+
+            print(f'\nLoad dataset ADHD, {len(final_dict)} files from {matched_subjects} matched subjects')
+            print(f"  - Control (label=0): {target_counts[0]} files")
+            print(f"  - ADHD (label=1): {target_counts[1]} files")
+
+            if unmatched_subjects:
+                print(f"  - Warning: {len(unmatched_subjects)} subject IDs in npz files not found in CSV")
+                if len(unmatched_subjects) <= 10:
+                    print(f"    Unmatched subjects: {sorted(unmatched_subjects)}")
+
+            # Print split statistics
+            print(f"\nPredefined split from txt files:")
+            print(f"  - Train: {len(split_file_paths['train'])} files")
+            print(f"  - Val: {len(split_file_paths['val'])} files")
+            print(f"  - Test: {len(split_file_paths['test'])} files")
+
         elif self.hparams.dataset_name == "HCP":
             """
             HCP dataset loading from txt files containing npz file paths.
@@ -910,6 +1006,12 @@ class fMRIDataModule(pl.LightningDataModule):
             train_names = self.adni_mci_split_file_paths['train']
             val_names = self.adni_mci_split_file_paths['val']
             test_names = self.adni_mci_split_file_paths['test']
+        # For ADHD_NEW dataset, use predefined split from txt files
+        elif self.hparams.dataset_name == "ADHD_NEW" and hasattr(self, 'adhd_new_split_file_paths'):
+            print("\n[INFO] Using predefined ADHD split from txt files (not random split)")
+            train_names = self.adhd_new_split_file_paths['train']
+            val_names = self.adhd_new_split_file_paths['val']
+            test_names = self.adhd_new_split_file_paths['test']
         # For HCP dataset, use predefined split from txt files
         elif self.hparams.dataset_name == "HCP" and hasattr(self, 'hcp_split_file_paths'):
             print("\n[INFO] Using predefined HCP split from txt files (not random split)")
