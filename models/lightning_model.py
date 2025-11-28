@@ -838,9 +838,11 @@ class LightningModel(pl.LightningModule):
             # For binary classification, logits is already squeezed in _compute_logits
             # For multi-class, logits has shape (batch, num_classes), so don't squeeze
             if self.hparams.num_classes > 2:
-                output = [logits.detach().cpu(), target.squeeze().detach().cpu()]
+                output = [logits.detach().cpu(), target.flatten().detach().cpu()]
             else:
-                output = [logits.squeeze().detach().cpu(), target.squeeze().detach().cpu()]
+                # Use flatten() instead of squeeze() to ensure at least 1D tensor
+                # This prevents issues when batch_size=1 which would create 0D tensors
+                output = [logits.flatten().detach().cpu(), target.flatten().detach().cpu()]
 
             return (subj, output)
 
