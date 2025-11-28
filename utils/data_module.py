@@ -715,6 +715,7 @@ class fMRIDataModule(pl.LightningDataModule):
                 subject_id = filename.split('_')[0]
 
                 # Look up DX_GROUP from CSV
+                # First try with original subject_id
                 if subject_id in subject_label_dict:
                     dx_group = subject_label_dict[subject_id]
                     target = dx_group  # 0=Control, 1=ADHD
@@ -723,6 +724,19 @@ class fMRIDataModule(pl.LightningDataModule):
                     # Use file path as the key (unique identifier)
                     final_dict[file_path] = [sex, target]
                     matched_subjects += 1
+                # If not found and subject_id starts with "00", try removing the "00" prefix
+                elif subject_id.startswith('00'):
+                    subject_id_without_00 = subject_id[2:]  # Remove "00" prefix
+                    if subject_id_without_00 in subject_label_dict:
+                        dx_group = subject_label_dict[subject_id_without_00]
+                        target = dx_group  # 0=Control, 1=ADHD
+                        sex = 0  # Not using sex for this task
+
+                        # Use file path as the key (unique identifier)
+                        final_dict[file_path] = [sex, target]
+                        matched_subjects += 1
+                    else:
+                        unmatched_subjects.add(subject_id)
                 else:
                     unmatched_subjects.add(subject_id)
 
@@ -740,8 +754,7 @@ class fMRIDataModule(pl.LightningDataModule):
 
             if unmatched_subjects:
                 print(f"  - Warning: {len(unmatched_subjects)} subject IDs in npz files not found in CSV")
-                if len(unmatched_subjects) <= 10:
-                    print(f"    Unmatched subjects: {sorted(unmatched_subjects)}")
+                print(f"    Unmatched subjects: {sorted(unmatched_subjects)}")
 
             # Print split statistics
             print(f"\nPredefined split from txt files:")
