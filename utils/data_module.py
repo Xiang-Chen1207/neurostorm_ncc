@@ -740,8 +740,7 @@ class fMRIDataModule(pl.LightningDataModule):
 
             if unmatched_subjects:
                 print(f"  - Warning: {len(unmatched_subjects)} subject IDs in npz files not found in CSV")
-                if len(unmatched_subjects) <= 10:
-                    print(f"    Unmatched subjects: {sorted(unmatched_subjects)}")
+                print(f"    Unmatched subjects: {sorted(unmatched_subjects)}")
 
             # Print split statistics
             print(f"\nPredefined split from txt files:")
