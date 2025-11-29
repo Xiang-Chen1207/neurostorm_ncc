@@ -989,18 +989,18 @@ class fMRIDataModule(pl.LightningDataModule):
 
         elif self.hparams.dataset_name == "PPMI":
             """
-            PPMI dataset loading from txt files containing .nii.gz file paths.
+            PPMI dataset loading from txt files containing .npz file paths.
             Expected structure:
-            - ppmi_mni_train.txt: paths to training .nii.gz files
-            - ppmi_mni_test.txt: paths to test .nii.gz files
-            - ppmi_mni_val.txt: paths to validation .nii.gz files
+            - ppmi_mni_train.txt: paths to training .npz files
+            - ppmi_mni_test.txt: paths to test .npz files
+            - ppmi_mni_val.txt: paths to validation .npz files
             - ppmi.csv: CSV file with Subject and Group_idx columns
 
             Labels are extracted from ppmi.csv based on subject ID.
             Group_idx values: 1, 2, 3 (filtering out 0)
             Converted to 0-indexed: 0, 1, 2
             """
-            # Load txt files with .nii.gz file paths
+            # Load txt files with .npz file paths
             txt_files = {
                 'train': os.path.join(self.hparams.image_path, 'ppmi_mni_train.txt'),
                 'val': os.path.join(self.hparams.image_path, 'ppmi_mni_val.txt'),
@@ -1045,13 +1045,14 @@ class fMRIDataModule(pl.LightningDataModule):
 
             for file_path in split_file_paths['train'] + split_file_paths['val'] + split_file_paths['test']:
                 # Extract subject ID from filename
-                # Example: "ADNI_sub-120622_ses-01_task-rest_..." -> "120622"
+                # Example: "sub-294308_ses-01_task-rest_..._seg005.npz" -> "294308"
                 filename = os.path.basename(file_path)
 
                 if 'sub-' in filename:
+                    # Extract subject ID: "sub-294308_ses-01..." -> "294308"
                     subject_id = filename.split('sub-')[1].split('_')[0]
                 else:
-                    # Try to extract numeric ID
+                    # Try to extract numeric ID (6 digits typically)
                     import re
                     match = re.search(r'\d{6}', filename)
                     if match:
