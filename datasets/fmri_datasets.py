@@ -7,6 +7,8 @@ import numpy as np
 import random
 import math
 import pandas as pd
+from functools import lru_cache
+from collections import OrderedDict
 
 
 def pad_to_96(y):
@@ -1157,13 +1159,104 @@ class PPMI(BaseDataset):
     File paths are provided in txt files (ppmi_mni_train.txt, ppmi_mni_val.txt, ppmi_mni_test.txt).
     Labels come from ppmi.csv based on Group_idx column (1, 2, 3).
     Only uses the FIRST .npz file of each subject (when multiple segments exist).
+
+    Optimizations:
+    - LRU cache for loaded data to reduce repeated I/O
+    - Memory-mapped file loading for efficient memory usage
+    - Metadata cache to avoid redundant file loading in _set_data
     """
-    def __init__(self, **kwargs):
+    def __init__(self, cache_size=100, use_mmap=True, **kwargs):
+        """
+        Args:
+            cache_size: Maximum number of files to keep in cache (default: 100)
+            use_mmap: Whether to use memory-mapped file loading (default: True)
+            **kwargs: Other arguments passed to BaseDataset
+        """
+        self.cache_size = cache_size
+        self.use_mmap = use_mmap
+        self._data_cache = OrderedDict()  # LRU cache for loaded data
+        self._metadata_cache = {}  # Cache for file metadata (shape, frames)
         super().__init__(**kwargs)
+
+    def _get_file_metadata(self, file_path):
+        """
+        Get metadata (shape, num_frames) from npz file with caching.
+        Args:
+            file_path: Path to the .npz file
+        Returns:
+            tuple: (data_shape, num_frames, data_key)
+        """
+        if file_path in self._metadata_cache:
+            return self._metadata_cache[file_path]
+
+        # Load file with memory mapping for efficiency
+        npz_data = np.load(file_path, mmap_mode='r' if self.use_mmap else None)
+
+        # Get the fMRI data array key and shape
+        if 'data' in npz_data:
+            data_key = 'data'
+            fmri_data = npz_data['data']
+        elif 'arr_0' in npz_data:
+            data_key = 'arr_0'
+            fmri_data = npz_data['arr_0']
+        else:
+            data_key = list(npz_data.keys())[0]
+            fmri_data = npz_data[data_key]
+
+        data_shape = fmri_data.shape
+
+        # Determine number of frames (could be first or last dimension)
+        if data_shape[-1] >= 20:  # Assuming we need at least 20 frames
+            num_frames = data_shape[-1]
+        elif data_shape[0] >= 20:
+            num_frames = data_shape[0]
+        else:
+            num_frames = 0  # Insufficient frames
+
+        # Cache metadata
+        metadata = (data_shape, num_frames, data_key)
+        self._metadata_cache[file_path] = metadata
+
+        return metadata
+
+    def _load_from_cache(self, file_path):
+        """
+        Load data from cache or file with LRU eviction.
+        Args:
+            file_path: Path to the .npz file
+        Returns:
+            numpy array or memory-mapped array
+        """
+        # Check if in cache
+        if file_path in self._data_cache:
+            # Move to end (most recently used)
+            self._data_cache.move_to_end(file_path)
+            return self._data_cache[file_path]
+
+        # Load from file
+        npz_data = np.load(file_path, mmap_mode='r' if self.use_mmap else None)
+
+        # Get the fMRI data
+        if 'data' in npz_data:
+            fmri_data = npz_data['data']
+        elif 'arr_0' in npz_data:
+            fmri_data = npz_data['arr_0']
+        else:
+            key = list(npz_data.keys())[0]
+            fmri_data = npz_data[key]
+
+        # Add to cache
+        self._data_cache[file_path] = fmri_data
+
+        # Evict oldest if cache is full
+        if len(self._data_cache) > self.cache_size:
+            self._data_cache.popitem(last=False)
+
+        return fmri_data
 
     def load_sequence(self, subject_path, start_frame, sample_duration, num_frames=None):
         """
-        Load a sequence directly from .npz file.
+        Load a sequence from .npz file with caching and memory mapping.
         Args:
             subject_path: Full path to the .npz file
             start_frame: Starting frame index (should be 0)
@@ -1172,18 +1265,8 @@ class PPMI(BaseDataset):
         Returns:
             Tensor of shape (1, H, W, D, 20)
         """
-        # Load the npz file
-        data = np.load(subject_path)
-
-        # The npz file should contain fMRI data
-        if 'data' in data:
-            fmri_data = data['data']
-        elif 'arr_0' in data:
-            fmri_data = data['arr_0']
-        else:
-            # Take the first array in the npz file
-            key = list(data.keys())[0]
-            fmri_data = data[key]
+        # Load from cache or file
+        fmri_data = self._load_from_cache(subject_path)
 
         # Extract the first 20 frames
         # Assuming shape is (H, W, D, T) or (T, H, W, D)
@@ -1199,13 +1282,14 @@ class PPMI(BaseDataset):
 
         # Convert to tensor and add batch dimension
         # Shape: (1, H, W, D, 20)
-        y = torch.from_numpy(sequence).float().unsqueeze(0)
+        # Use copy() to ensure data is in memory (not memory-mapped) for tensor conversion
+        y = torch.from_numpy(np.array(sequence)).float().unsqueeze(0)
 
         return y
 
     def _set_data(self, root, subject_dict):
         """
-        Set up data list for PPMI dataset.
+        Set up data list for PPMI dataset with optimized metadata loading.
         Only uses the first 20 frames from the FIRST .npz file of each subject.
         Args:
             root: Not used - paths are provided directly in subject_dict
@@ -1222,6 +1306,7 @@ class PPMI(BaseDataset):
         file_not_found_count = 0
 
         print(f"Processing {total_files} PPMI files - keeping only first file per subject, first 20 frames...")
+        print(f"  Cache size: {self.cache_size}, Memory mapping: {self.use_mmap}")
 
         # Sort file paths to ensure consistent ordering (seg000 before seg001, etc.)
         sorted_file_paths = sorted(subject_dict.keys())
@@ -1257,26 +1342,20 @@ class PPMI(BaseDataset):
                     skipped_files += 1
                     continue
 
-                # Load npz file to check number of frames
-                npz_data = np.load(file_path)
-
-                # Get the fMRI data array
-                if 'data' in npz_data:
-                    fmri_data = npz_data['data']
-                elif 'arr_0' in npz_data:
-                    fmri_data = npz_data['arr_0']
-                else:
-                    key = list(npz_data.keys())[0]
-                    fmri_data = npz_data[key]
-
-                # Determine number of frames (could be first or last dimension)
-                if fmri_data.shape[-1] >= self.sequence_length:
-                    num_frames = fmri_data.shape[-1]
-                elif fmri_data.shape[0] >= self.sequence_length:
-                    num_frames = fmri_data.shape[0]
-                else:
+                # Get metadata (with caching to avoid redundant loads)
+                try:
+                    data_shape, num_frames, data_key = self._get_file_metadata(file_path)
+                except Exception as e:
                     if error_count < 5:
-                        print(f"  Skipping {file_path}: insufficient frames (shape: {fmri_data.shape})")
+                        print(f"  Error reading metadata from {file_path}: {e}")
+                    error_count += 1
+                    skipped_files += 1
+                    continue
+
+                # Check if file has sufficient frames
+                if num_frames < self.sequence_length:
+                    if error_count < 5:
+                        print(f"  Skipping {file_path}: insufficient frames (shape: {data_shape})")
                     error_count += 1
                     skipped_files += 1
                     continue
@@ -1301,6 +1380,7 @@ class PPMI(BaseDataset):
 
         print(f"Total: {len(data)} samples created from {len(processed_subjects)} unique subjects")
         print(f"  (Skipped {skipped_files} files: {file_not_found_count} not found, {error_count} load errors, {skipped_files - file_not_found_count - error_count} duplicates)")
+        print(f"  Metadata cache size: {len(self._metadata_cache)} files")
 
         if self.train:
             self.target_values = np.array([tup[6] for tup in data]).reshape(-1, 1)
