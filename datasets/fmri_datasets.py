@@ -1150,6 +1150,119 @@ class HCP(BaseDataset):
         return data# Temporary file with ABIDE class to append to fmri_datasets.py
 
 
+class PPMI(BaseDataset):
+    """
+    PPMI dataset for Parkinson's Disease three-class classification.
+    Loads .nii.gz files directly.
+    File paths are provided in txt files (ppmi_mni_train.txt, ppmi_mni_val.txt, ppmi_mni_test.txt).
+    Labels come from ppmi.csv based on Group_idx column (1, 2, 3).
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def load_sequence(self, subject_path, start_frame, sample_duration, num_frames=None):
+        """
+        Load a sequence directly from .nii.gz file.
+        Args:
+            subject_path: Full path to the .nii.gz file
+            start_frame: Starting frame index (should be 0)
+            sample_duration: Number of frames to load (should be 20)
+            num_frames: Total number of frames in the volume (unused)
+        Returns:
+            Tensor of shape (1, H, W, D, 20)
+        """
+        import nibabel as nib
+
+        # Load the nii.gz file
+        nii_data = nib.load(subject_path)
+        fmri_data = nii_data.get_fdata()
+
+        # Extract the first 20 frames
+        # Assuming shape is (H, W, D, T)
+        if fmri_data.shape[-1] >= sample_duration:
+            # Last dimension is time
+            sequence = fmri_data[:, :, :, start_frame:start_frame + sample_duration]
+        else:
+            raise ValueError(f"nii.gz file {subject_path} has insufficient frames: {fmri_data.shape}")
+
+        # Convert to tensor and add batch dimension
+        # Shape: (1, H, W, D, 20)
+        y = torch.from_numpy(sequence).float().unsqueeze(0)
+
+        return y
+
+    def _set_data(self, root, subject_dict):
+        """
+        Set up data list for PPMI dataset.
+        Only uses the first 20 frames from each .nii.gz file.
+        Args:
+            root: Not used - paths are provided directly in subject_dict
+            subject_dict: Dictionary mapping file_path -> [sex, target_label]
+                         target_label: 0, 1, 2 (for three classes)
+        Returns:
+            List of tuples: (index, subject_name, file_path, start_frame, stride, num_frames, target, sex)
+        """
+        data = []
+        total_files = len(subject_dict)
+        skipped_files = 0
+        error_count = 0
+        file_not_found_count = 0
+
+        print(f"Processing {total_files} PPMI files - using first 20 frames from each file...")
+
+        for i, file_path in enumerate(subject_dict.keys()):
+            sex, target = subject_dict[file_path]
+
+            try:
+                # Extract subject ID from filename
+                # Example: "ADNI_sub-120622_ses-01_task-rest_..." -> "120622"
+                filename = os.path.basename(file_path)
+
+                # Extract subject ID: "ADNI_sub-120622_ses-01..." -> "120622"
+                if 'sub-' in filename:
+                    subject_id = filename.split('sub-')[1].split('_')[0]
+                else:
+                    # Fallback: use the whole filename without extension
+                    subject_id = filename.rsplit('.', 1)[0]
+
+                # Check if file exists
+                if not os.path.exists(file_path):
+                    if file_not_found_count < 5:  # Only print first 5 missing files
+                        print(f"  Warning: File not found: {file_path}")
+                    file_not_found_count += 1
+                    skipped_files += 1
+                    continue
+
+                # For PPMI, we assume all files have at least 20 frames
+                # We'll verify this during loading
+                num_frames = self.sequence_length  # Assume at least sequence_length frames
+                start_frame = 0
+
+                # Data tuple format: (idx, subject_id, file_path, start_frame, sequence_length, num_frames, target, sex)
+                data_tuple = (i, subject_id, file_path, start_frame, self.sequence_length, num_frames, target, sex)
+                data.append(data_tuple)
+
+                # Print progress every 50 files checked
+                if (i + 1) % 50 == 0 or (i + 1) == total_files:
+                    print(f"  Processed {i + 1}/{total_files} files, created {len(data)} samples...")
+
+            except Exception as e:
+                if error_count < 5:  # Only print first 5 errors
+                    print(f"Error processing {file_path}: {e}")
+                error_count += 1
+                skipped_files += 1
+                continue
+
+        print(f"Total: {len(data)} samples created")
+        if skipped_files > 0:
+            print(f"  (Skipped {skipped_files} files: {file_not_found_count} not found, {error_count} errors)")
+
+        if self.train:
+            self.target_values = np.array([tup[6] for tup in data]).reshape(-1, 1)
+
+        return data
+
+
 class ABIDE(BaseDataset):
     """
     ABIDE dataset for age group classification.

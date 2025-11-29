@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 import numpy as np
 import pandas as pd
 from torch.utils.data import DataLoader, Subset
-from datasets.fmri_datasets import HCP1200, ABCD, UKB, Cobre, ADHD200, UCLA, HCPEP, HCPTASK, GOD, MOVIE, TransDiag, ADNI, ADNI_MCI, ADHD_NEW, HCP, ABIDE
+from datasets.fmri_datasets import HCP1200, ABCD, UKB, Cobre, ADHD200, UCLA, HCPEP, HCPTASK, GOD, MOVIE, TransDiag, ADNI, ADNI_MCI, ADHD_NEW, HCP, ABIDE, PPMI
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from .parser import str2bool
 
@@ -84,6 +84,8 @@ class fMRIDataModule(pl.LightningDataModule):
             return HCP
         elif self.hparams.dataset_name == 'ABIDE':
             return ABIDE
+        elif self.hparams.dataset_name == 'PPMI':
+            return PPMI
         else:
             raise NotImplementedError
 
@@ -985,6 +987,128 @@ class fMRIDataModule(pl.LightningDataModule):
             print(f"  - Val: {len(split_file_paths['val'])} files")
             print(f"  - Test: {len(split_file_paths['test'])} files")
 
+        elif self.hparams.dataset_name == "PPMI":
+            """
+            PPMI dataset loading from txt files containing .nii.gz file paths.
+            Expected structure:
+            - ppmi_mni_train.txt: paths to training .nii.gz files
+            - ppmi_mni_test.txt: paths to test .nii.gz files
+            - ppmi_mni_val.txt: paths to validation .nii.gz files
+            - ppmi.csv: CSV file with Subject and Group_idx columns
+
+            Labels are extracted from ppmi.csv based on subject ID.
+            Group_idx values: 1, 2, 3 (filtering out 0)
+            Converted to 0-indexed: 0, 1, 2
+            """
+            # Load txt files with .nii.gz file paths
+            txt_files = {
+                'train': os.path.join(self.hparams.image_path, 'ppmi_mni_train.txt'),
+                'val': os.path.join(self.hparams.image_path, 'ppmi_mni_val.txt'),
+                'test': os.path.join(self.hparams.image_path, 'ppmi_mni_test.txt')
+            }
+
+            # Load CSV file with labels
+            csv_file = os.path.join(self.hparams.image_path, 'ppmi.csv')
+            if not os.path.exists(csv_file):
+                raise FileNotFoundError(f"PPMI CSV file not found: {csv_file}")
+
+            meta_data = pd.read_csv(csv_file, encoding='utf-8-sig')
+            # Create a dictionary mapping subject ID to Group_idx
+            subject_label_dict = {}
+            for _, row in meta_data.iterrows():
+                subject_id = str(row['Subject'])
+                group_idx = int(row['Group_idx'])
+
+                # Only include subjects with Group_idx in [1, 2, 3]
+                if group_idx in [1, 2, 3]:
+                    # Convert to 0-indexed: 1->0, 2->1, 3->2
+                    label = group_idx - 1
+                    subject_label_dict[subject_id] = label
+
+            print(f"Loaded Group_idx labels for {len(subject_label_dict)} subjects from CSV (3-class classification)")
+
+            # Load file paths from each split SEPARATELY to preserve the split
+            split_file_paths = {'train': [], 'val': [], 'test': []}
+            for split_name, txt_file in txt_files.items():
+                if os.path.exists(txt_file):
+                    with open(txt_file, 'r') as f:
+                        paths = [line.strip() for line in f.readlines() if line.strip()]
+                        split_file_paths[split_name] = paths
+                    print(f"Loaded {len(split_file_paths[split_name])} paths from {split_name} split")
+                else:
+                    print(f"Warning: {txt_file} not found, skipping...")
+
+            # Extract labels from CSV based on subject ID in file path
+            matched_subjects = 0
+            unmatched_subjects = set()
+            skipped_group_0 = 0
+
+            for file_path in split_file_paths['train'] + split_file_paths['val'] + split_file_paths['test']:
+                # Extract subject ID from filename
+                # Example: "ADNI_sub-120622_ses-01_task-rest_..." -> "120622"
+                filename = os.path.basename(file_path)
+
+                if 'sub-' in filename:
+                    subject_id = filename.split('sub-')[1].split('_')[0]
+                else:
+                    # Try to extract numeric ID
+                    import re
+                    match = re.search(r'\d{6}', filename)
+                    if match:
+                        subject_id = match.group()
+                    else:
+                        unmatched_subjects.add(filename)
+                        continue
+
+                # Look up Group_idx from CSV
+                if subject_id in subject_label_dict:
+                    label = subject_label_dict[subject_id]
+                    sex = 0  # Not using sex for this task
+
+                    # Use file path as the key (unique identifier)
+                    final_dict[file_path] = [sex, label]
+                    matched_subjects += 1
+                else:
+                    # Check if this subject has Group_idx=0 (which we're filtering out)
+                    # We need to check the original CSV for this
+                    subject_in_csv = False
+                    for _, row in meta_data.iterrows():
+                        if str(row['Subject']) == subject_id:
+                            subject_in_csv = True
+                            if int(row['Group_idx']) == 0:
+                                skipped_group_0 += 1
+                            break
+
+                    if not subject_in_csv:
+                        unmatched_subjects.add(subject_id)
+
+            # Store the predefined split information
+            self.ppmi_split_file_paths = split_file_paths
+
+            # Print statistics
+            target_counts = defaultdict(int)
+            for file_path, (sex, target) in final_dict.items():
+                target_counts[target] += 1
+
+            print(f'\nLoad dataset PPMI, {len(final_dict)} files from {matched_subjects} matched subjects')
+            print(f"  - Class 0 (PD): {target_counts[0]} files")
+            print(f"  - Class 1 (Control): {target_counts[1]} files")
+            print(f"  - Class 2 (Other): {target_counts[2]} files")
+
+            if skipped_group_0 > 0:
+                print(f"  - Skipped {skipped_group_0} files with Group_idx=0 (excluded from 3-class task)")
+
+            if unmatched_subjects:
+                print(f"  - Warning: {len(unmatched_subjects)} subject IDs in files not found in CSV")
+                if len(unmatched_subjects) <= 10:
+                    print(f"    Unmatched subjects: {sorted(unmatched_subjects)}")
+
+            # Print split statistics
+            print(f"\nPredefined split from txt files:")
+            print(f"  - Train: {len(split_file_paths['train'])} files")
+            print(f"  - Val: {len(split_file_paths['val'])} files")
+            print(f"  - Test: {len(split_file_paths['test'])} files")
+
         return final_dict
 
     def setup(self, stage=None):
@@ -1037,6 +1161,12 @@ class fMRIDataModule(pl.LightningDataModule):
             train_names = self.abide_split_file_paths['train']
             val_names = self.abide_split_file_paths['val']
             test_names = self.abide_split_file_paths['test']
+        # For PPMI dataset, use predefined split from txt files
+        elif self.hparams.dataset_name == "PPMI" and hasattr(self, 'ppmi_split_file_paths'):
+            print("\n[INFO] Using predefined PPMI split from txt files (not random split)")
+            train_names = self.ppmi_split_file_paths['train']
+            val_names = self.ppmi_split_file_paths['val']
+            test_names = self.ppmi_split_file_paths['test']
         elif os.path.exists(self.split_file_path):
             train_names, val_names, test_names = self.load_split()
         else:
