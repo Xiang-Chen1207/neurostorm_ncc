@@ -50,11 +50,12 @@ python /home/user/neurostorm_ncc/main.py \
   --num_sanity_val_steps 0
 
 # Notes:
-# - The model will load .nii.gz files directly from the paths specified in the txt files
-# - Only the first 20 frames are used from each file
+# - The model will load .npz files directly from the paths specified in the txt files
+# - Only the first 20 frames are used from each .npz file
+# - Only the FIRST .npz file per subject is used (when multiple segments exist)
 # - Labels are extracted from ppmi.csv based on Subject ID and Group_idx column
 # - Group_idx values: 1 (PD), 2 (Control), 3 (Other) are converted to 0-indexed: 0, 1, 2
-# - Subject ID is extracted from filename (e.g., "ADNI_sub-120622_ses-01..." -> "120622")
+# - Subject ID is extracted from filename (e.g., "sub-294308_ses-01_..._seg005.npz" -> "294308")
 # - Adjust --batch_size based on your GPU memory (default: 2)
 # - Adjust CUDA_VISIBLE_DEVICES based on available GPUs
 # - Pre-trained model path: /home/user/neurostorm_ncc/pt_fmrifound_mae_ratio0.5.ckpt
