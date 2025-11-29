@@ -1249,34 +1249,44 @@ class PPMI(BaseDataset):
                 # Mark this subject as processed
                 processed_subjects.add(subject_id)
 
-                # Check if file exists
-                if not os.path.exists(file_path):
-                    if file_not_found_count < 5:  # Only print first 5 missing files
+                # Use memory-mapped mode to only read metadata, not load entire file
+                # This is MUCH faster than loading the whole file
+                try:
+                    npz_data = np.load(file_path, mmap_mode='r')
+
+                    # Get the fMRI data array
+                    if 'data' in npz_data:
+                        fmri_data = npz_data['data']
+                    elif 'arr_0' in npz_data:
+                        fmri_data = npz_data['arr_0']
+                    else:
+                        key = list(npz_data.keys())[0]
+                        fmri_data = npz_data[key]
+
+                    # Determine number of frames (could be first or last dimension)
+                    if fmri_data.shape[-1] >= self.sequence_length:
+                        num_frames = fmri_data.shape[-1]
+                    elif fmri_data.shape[0] >= self.sequence_length:
+                        num_frames = fmri_data.shape[0]
+                    else:
+                        if error_count < 5:
+                            print(f"  Skipping {file_path}: insufficient frames (shape: {fmri_data.shape})")
+                        error_count += 1
+                        skipped_files += 1
+                        npz_data.close()
+                        continue
+
+                    npz_data.close()  # Close the file after reading metadata
+
+                except FileNotFoundError:
+                    if file_not_found_count < 5:
                         print(f"  Warning: File not found: {file_path}")
                     file_not_found_count += 1
                     skipped_files += 1
                     continue
-
-                # Load npz file to check number of frames
-                npz_data = np.load(file_path)
-
-                # Get the fMRI data array
-                if 'data' in npz_data:
-                    fmri_data = npz_data['data']
-                elif 'arr_0' in npz_data:
-                    fmri_data = npz_data['arr_0']
-                else:
-                    key = list(npz_data.keys())[0]
-                    fmri_data = npz_data[key]
-
-                # Determine number of frames (could be first or last dimension)
-                if fmri_data.shape[-1] >= self.sequence_length:
-                    num_frames = fmri_data.shape[-1]
-                elif fmri_data.shape[0] >= self.sequence_length:
-                    num_frames = fmri_data.shape[0]
-                else:
+                except Exception as e:
                     if error_count < 5:
-                        print(f"  Skipping {file_path}: insufficient frames (shape: {fmri_data.shape})")
+                        print(f"  Error reading {file_path}: {e}")
                     error_count += 1
                     skipped_files += 1
                     continue
