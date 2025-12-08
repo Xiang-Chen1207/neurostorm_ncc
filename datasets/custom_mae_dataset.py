@@ -7,9 +7,6 @@ import numpy as np
 import nibabel as nib
 from .fmri_datasets import BaseDataset
 
-# Constants
-MAX_ERROR_REPORTS = 5  # Maximum number of error messages to print
-
 
 class CustomMAE(BaseDataset):
     """
@@ -17,8 +14,21 @@ class CustomMAE(BaseDataset):
     Each line in the text file should contain the path to a data file.
     Supports .npz, .npy, .pt, and .nii.gz formats.
     Expected data shape: (96, 96, 96, 200) or similar 4D fMRI volumes.
+    
+    Args:
+        max_error_reports: Maximum number of error messages to print during data loading.
+                          Set to 0 to suppress error messages, or -1 for unlimited.
+                          Default is 5.
     """
-    def __init__(self, **kwargs):
+    # Default maximum number of error messages to print
+    MAX_ERROR_REPORTS = 5
+    
+    def __init__(self, max_error_reports=None, **kwargs):
+        # Allow overriding the max error reports
+        if max_error_reports is not None:
+            self.max_error_reports = max_error_reports
+        else:
+            self.max_error_reports = self.MAX_ERROR_REPORTS
         super().__init__(**kwargs)
     
     def _set_data(self, root, subject_dict):
@@ -66,7 +76,7 @@ class CustomMAE(BaseDataset):
                 
                 # Check if file exists
                 if not os.path.exists(file_path):
-                    if error_count < MAX_ERROR_REPORTS:
+                    if error_count < self.max_error_reports:
                         print(f"  File not found: {file_path}")
                     file_not_found_count += 1
                     skipped_files += 1
@@ -93,7 +103,7 @@ class CustomMAE(BaseDataset):
                     if len(fmri_data.shape) == 4:
                         num_frames = fmri_data.shape[-1]
                     else:
-                        if error_count < MAX_ERROR_REPORTS:
+                        if error_count < self.max_error_reports:
                             print(f"  Skipping {file_path}: unexpected shape {fmri_data.shape}, expected 4D")
                         error_count += 1
                         skipped_files += 1
@@ -104,7 +114,7 @@ class CustomMAE(BaseDataset):
                     if len(fmri_data.shape) == 4:
                         num_frames = fmri_data.shape[-1]
                     else:
-                        if error_count < MAX_ERROR_REPORTS:
+                        if error_count < self.max_error_reports:
                             print(f"  Skipping {file_path}: unexpected shape {fmri_data.shape}, expected 4D")
                         error_count += 1
                         skipped_files += 1
@@ -117,7 +127,7 @@ class CustomMAE(BaseDataset):
                     if len(fmri_data.shape) == 4:
                         num_frames = fmri_data.shape[-1]
                     else:
-                        if error_count < MAX_ERROR_REPORTS:
+                        if error_count < self.max_error_reports:
                             print(f"  Skipping {file_path}: unexpected shape {fmri_data.shape}, expected 4D")
                         error_count += 1
                         skipped_files += 1
@@ -129,13 +139,13 @@ class CustomMAE(BaseDataset):
                     if len(fmri_data.shape) == 4:
                         num_frames = fmri_data.shape[-1]
                     else:
-                        if error_count < MAX_ERROR_REPORTS:
+                        if error_count < self.max_error_reports:
                             print(f"  Skipping {file_path}: unexpected shape {fmri_data.shape}, expected 4D")
                         error_count += 1
                         skipped_files += 1
                         continue
                 else:
-                    if error_count < MAX_ERROR_REPORTS:
+                    if error_count < self.max_error_reports:
                         print(f"  Skipping {file_path}: unsupported file format")
                     error_count += 1
                     skipped_files += 1
@@ -143,7 +153,7 @@ class CustomMAE(BaseDataset):
                 
                 # Check if sufficient frames for sequence_length
                 if num_frames < self.sequence_length:
-                    if error_count < MAX_ERROR_REPORTS:
+                    if error_count < self.max_error_reports:
                         print(f"  Skipping {file_path}: insufficient frames ({num_frames} < {self.sequence_length})")
                     error_count += 1
                     skipped_files += 1
@@ -152,7 +162,10 @@ class CustomMAE(BaseDataset):
                 # Create multiple samples from the same file if it has many frames
                 session_duration = num_frames - self.sample_duration + 1
                 
-                # For MAE pretraining, we typically use overlapping or non-overlapping windows
+                # For MAE pretraining, stride controls window overlap:
+                # - stride=1: creates overlapping windows (each sample overlaps with previous)
+                # - stride=sample_duration: creates non-overlapping windows (no overlap between samples)
+                # - stride=N: creates windows with (sample_duration-N) overlap
                 for start_frame in range(0, session_duration, self.stride):
                     # Dummy target and sex values for pretraining (not used in MAE)
                     target = 0
@@ -166,9 +179,10 @@ class CustomMAE(BaseDataset):
                 if (i + 1) % 50 == 0 or (i + 1) == total_files:
                     print(f"  Processed {i + 1}/{total_files} files, created {len(data)} samples...")
                     
-            except Exception as e:
-                if error_count < MAX_ERROR_REPORTS:
-                    print(f"  Error loading {file_path}: {e}")
+            except (IOError, OSError, ValueError, KeyError) as e:
+                # Catch specific file I/O and data loading errors
+                if error_count < self.max_error_reports:
+                    print(f"  Error loading {file_path}: {type(e).__name__}: {e}")
                 error_count += 1
                 skipped_files += 1
                 continue

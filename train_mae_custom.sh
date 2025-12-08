@@ -35,7 +35,8 @@ if [[ ! -r "data.txt" ]]; then
 fi
 
 # Count number of data files (safely handle errors)
-num_files=$(grep -v "^#" data.txt 2>/dev/null | grep -v "^$" | wc -l || echo "0")
+# Use awk for efficient processing: skip comments (#) and empty lines
+num_files=$(awk '!/^#/ && NF' data.txt 2>/dev/null | wc -l || echo "0")
 echo "Found $num_files data files in data.txt"
 
 if [[ "$num_files" -eq 0 ]]; then
