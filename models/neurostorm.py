@@ -1183,8 +1183,7 @@ class NeuroSTORMMAE(nn.Module):
         elif self.spatial_mask == 'window' and self.time_mask == 'tube':
             raise NotImplementedError
         else:
-            print("Invalid mask type")
-            import ipdb; ipdb.set_trace()
+            raise ValueError(f"Invalid mask type: spatial_mask={self.spatial_mask}, time_mask={self.time_mask}")
 
         return new_sequence, overall_mask
 

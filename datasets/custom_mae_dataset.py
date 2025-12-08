@@ -7,6 +7,9 @@ import numpy as np
 import nibabel as nib
 from .fmri_datasets import BaseDataset
 
+# Constants
+MAX_ERROR_REPORTS = 5  # Maximum number of error messages to print
+
 
 class CustomMAE(BaseDataset):
     """
@@ -63,7 +66,7 @@ class CustomMAE(BaseDataset):
                 
                 # Check if file exists
                 if not os.path.exists(file_path):
-                    if error_count < 5:
+                    if error_count < MAX_ERROR_REPORTS:
                         print(f"  File not found: {file_path}")
                     file_not_found_count += 1
                     skipped_files += 1
@@ -90,7 +93,7 @@ class CustomMAE(BaseDataset):
                     if len(fmri_data.shape) == 4:
                         num_frames = fmri_data.shape[-1]
                     else:
-                        if error_count < 5:
+                        if error_count < MAX_ERROR_REPORTS:
                             print(f"  Skipping {file_path}: unexpected shape {fmri_data.shape}, expected 4D")
                         error_count += 1
                         skipped_files += 1
@@ -101,7 +104,7 @@ class CustomMAE(BaseDataset):
                     if len(fmri_data.shape) == 4:
                         num_frames = fmri_data.shape[-1]
                     else:
-                        if error_count < 5:
+                        if error_count < MAX_ERROR_REPORTS:
                             print(f"  Skipping {file_path}: unexpected shape {fmri_data.shape}, expected 4D")
                         error_count += 1
                         skipped_files += 1
@@ -114,7 +117,7 @@ class CustomMAE(BaseDataset):
                     if len(fmri_data.shape) == 4:
                         num_frames = fmri_data.shape[-1]
                     else:
-                        if error_count < 5:
+                        if error_count < MAX_ERROR_REPORTS:
                             print(f"  Skipping {file_path}: unexpected shape {fmri_data.shape}, expected 4D")
                         error_count += 1
                         skipped_files += 1
@@ -126,13 +129,13 @@ class CustomMAE(BaseDataset):
                     if len(fmri_data.shape) == 4:
                         num_frames = fmri_data.shape[-1]
                     else:
-                        if error_count < 5:
+                        if error_count < MAX_ERROR_REPORTS:
                             print(f"  Skipping {file_path}: unexpected shape {fmri_data.shape}, expected 4D")
                         error_count += 1
                         skipped_files += 1
                         continue
                 else:
-                    if error_count < 5:
+                    if error_count < MAX_ERROR_REPORTS:
                         print(f"  Skipping {file_path}: unsupported file format")
                     error_count += 1
                     skipped_files += 1
@@ -140,7 +143,7 @@ class CustomMAE(BaseDataset):
                 
                 # Check if sufficient frames for sequence_length
                 if num_frames < self.sequence_length:
-                    if error_count < 5:
+                    if error_count < MAX_ERROR_REPORTS:
                         print(f"  Skipping {file_path}: insufficient frames ({num_frames} < {self.sequence_length})")
                     error_count += 1
                     skipped_files += 1
@@ -164,7 +167,7 @@ class CustomMAE(BaseDataset):
                     print(f"  Processed {i + 1}/{total_files} files, created {len(data)} samples...")
                     
             except Exception as e:
-                if error_count < 5:
+                if error_count < MAX_ERROR_REPORTS:
                     print(f"  Error loading {file_path}: {e}")
                 error_count += 1
                 skipped_files += 1

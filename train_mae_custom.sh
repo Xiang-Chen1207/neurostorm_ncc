@@ -21,17 +21,24 @@ export NCCL_P2P_DISABLE=1
 project_name="custom_pt_neurostorm_mae0.5"
 
 # Check if data.txt exists
-if [ ! -f "data.txt" ]; then
+if [[ ! -f "data.txt" ]]; then
     echo "Error: data.txt not found in current directory"
     echo "Please create data.txt with one file path per line"
     exit 1
 fi
 
-# Count number of data files
-num_files=$(grep -v "^#" data.txt | grep -v "^$" | wc -l)
+# Check if data.txt is readable
+if [[ ! -r "data.txt" ]]; then
+    echo "Error: data.txt is not readable"
+    echo "Please check file permissions"
+    exit 1
+fi
+
+# Count number of data files (safely handle errors)
+num_files=$(grep -v "^#" data.txt 2>/dev/null | grep -v "^$" | wc -l || echo "0")
 echo "Found $num_files data files in data.txt"
 
-if [ $num_files -eq 0 ]; then
+if [[ "$num_files" -eq 0 ]]; then
     echo "Error: No data files found in data.txt"
     echo "Please add file paths to data.txt (one per line)"
     exit 1

@@ -36,15 +36,16 @@ def test_imports():
 def test_model_instantiation():
     """Test if NeuroSTORMMAE can be instantiated."""
     print("\nTesting model instantiation...")
+    
+    # Configurable test dimensions - can be modified for different test cases
+    TEST_IMG_SIZE = (96, 96, 96, 40)  # (H, W, D, T)
+    
     try:
         from models.neurostorm import NeuroSTORMMAE
         import torch
         
-        # Use configurable dimensions for testing
-        img_h, img_w, img_d, img_t = 96, 96, 96, 40
-        
         model = NeuroSTORMMAE(
-            img_size=(img_h, img_w, img_d, img_t),
+            img_size=TEST_IMG_SIZE,
             in_chans=1,
             embed_dim=36,
             window_size=(4, 4, 4, 4),
@@ -59,7 +60,7 @@ def test_model_instantiation():
         print("✓ NeuroSTORMMAE model instantiated successfully")
         
         # Test forward pass with dummy data
-        dummy_input = torch.randn(1, 1, img_h, img_w, img_d, img_t)
+        dummy_input = torch.randn(1, 1, *TEST_IMG_SIZE)
         try:
             output, loss = model(dummy_input)
             print(f"✓ Forward pass successful, loss shape: {loss.shape if hasattr(loss, 'shape') else 'scalar'}")
