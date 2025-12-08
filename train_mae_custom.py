@@ -157,7 +157,9 @@ def main():
     print(' '.join(cmd_args))
     print()
     
-    os.execvp(cmd_args[0], cmd_args)
+    import subprocess
+    result = subprocess.run(cmd_args)
+    sys.exit(result.returncode)
 
 if __name__ == '__main__':
     main()

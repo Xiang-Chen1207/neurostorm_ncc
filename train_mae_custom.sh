@@ -9,7 +9,7 @@
 # Default batch size
 batch_size="8"
 
-if [ ! -z "$1" ]; then
+if [[ -n "$1" ]]; then
   batch_size=$1
 fi
 
