@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from torch.utils.data import DataLoader, Subset
 from datasets.fmri_datasets import HCP1200, ABCD, UKB, Cobre, ADHD200, UCLA, HCPEP, HCPTASK, GOD, MOVIE, TransDiag, ADNI, ADNI_MCI, ADHD_NEW, HCP, ABIDE, PPMI
+from datasets.custom_mae_dataset import CustomMAE
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from .parser import str2bool
 
@@ -86,6 +87,8 @@ class fMRIDataModule(pl.LightningDataModule):
             return ABIDE
         elif self.hparams.dataset_name == 'PPMI':
             return PPMI
+        elif self.hparams.dataset_name == 'CustomMAE':
+            return CustomMAE
         else:
             raise NotImplementedError
 
@@ -1109,6 +1112,13 @@ class fMRIDataModule(pl.LightningDataModule):
             print(f"  - Train: {len(split_file_paths['train'])} files")
             print(f"  - Val: {len(split_file_paths['val'])} files")
             print(f"  - Test: {len(split_file_paths['test'])} files")
+
+        elif self.hparams.dataset_name == "CustomMAE":
+            # For CustomMAE, return a simple dict that points to data.txt
+            # The actual file loading is handled by the CustomMAE dataset class
+            data_txt_path = getattr(self.hparams, 'data_txt_path', 'data.txt')
+            final_dict = {'data_txt_path': data_txt_path}
+            print(f"CustomMAE dataset will load data from: {data_txt_path}")
 
         return final_dict
 

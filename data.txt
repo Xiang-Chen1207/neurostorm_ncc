@@ -1,0 +1,18 @@
+# Sample data.txt file for MAE pretraining
+# Each line should contain the absolute or relative path to a fMRI data file
+# Supported formats: .npz, .npy, .pt, .nii.gz, .nii
+# Expected data shape: (96, 96, 96, 200) where the last dimension is time
+
+# Example paths (replace with your actual data paths):
+# /path/to/your/fmri/data/subject_001.npz
+# /path/to/your/fmri/data/subject_002.npy
+# /path/to/your/fmri/data/subject_003.pt
+# /path/to/your/fmri/data/subject_004.nii.gz
+
+# Instructions:
+# 1. Replace the example paths above with your actual fMRI data file paths
+# 2. Each file should contain 4D fMRI data with shape (H, W, D, T) 
+#    where H, W, D are spatial dimensions and T is the number of time points
+# 3. The data will be automatically resized to match img_size if needed
+# 4. Remove this comment section and add your data paths below
+
