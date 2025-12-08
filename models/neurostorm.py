@@ -1234,10 +1234,9 @@ class NeuroSTORMMAE(nn.Module):
     
     def forward_loss(self, x, pred, mask):
         if self.spatial_mask == 'random' and self.time_mask == 'random':
-            import ipdb; ipdb.set_trace()
             x_patch = self.patchify(x)
             pred_patch = self.patchify(pred)
-            loss = (x_windows - pred_windows) ** 2
+            loss = (x_patch - pred_patch) ** 2
             loss = loss.mean(dim=-1)
             loss = loss.mean(dim=-1)
             loss = (loss * mask).sum() / mask.sum()
